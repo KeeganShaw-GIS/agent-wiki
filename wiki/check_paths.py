@@ -7,10 +7,11 @@ import sys
 from pathlib import Path
 
 from .lib import (
-    DOCS_ROOT, NEW_ENTRY_LOG, TEMPLATE_FILE, WIKI_ROOT,
-    add_to_schema, append_log, clear_flag, doc_path, get_config_flag, get_repo_path,
-    load_schema, now_ts, save_schema, schema_paths, set_flag,
-    symlink_path, untracked_paths, walk_schema, write_metadata_footer,
+    CONFLICT_LOG, DOCS_ROOT, NEW_ENTRY_LOG, TEMPLATE_FILE, WIKI_ROOT,
+    add_to_schema, append_log, clear_conflict_log_for, clear_flag, doc_path,
+    get_config_flag, get_repo_path, load_conflict_log, load_schema, now_ts,
+    save_schema, schema_paths, set_flag, symlink_path, untracked_paths,
+    walk_schema, write_metadata_footer,
 )
 
 _WIKI_BANNER = (
@@ -200,15 +201,23 @@ def _handle_untracked(schema: dict, repo: Path, quiet: bool = False):
                 print(f"  [untracked] moved wiki doc → {link.relative_to(repo)}")
 
 
-def run_pull_docs(quiet: bool = False) -> tuple[int, list[str]]:
-    """Scan the target repo for unmanaged CLAUDE.md files and absorb them into the wiki."""
+def run_pull_docs(quiet: bool = False, strategy: str = "skip") -> tuple[int, list[str]]:
+    """Scan the target repo for unmanaged CLAUDE.md files and absorb them into the wiki.
+
+    strategy: "skip" (default) — flag conflicts and leave both files untouched
+              "wiki"           — keep wiki version; replace repo file with symlink
+              "repo"           — overwrite wiki with repo version; replace repo file with symlink
+    """
     schema = load_schema()
     repo = get_repo_path()
     nodes = walk_schema(schema)
-    return _detect_and_integrate(schema, repo, nodes, quiet=quiet)
+    return _detect_and_integrate(schema, repo, nodes, quiet=quiet, strategy=strategy)
 
 
-def _detect_and_integrate(schema: dict, repo: Path, existing_nodes: list, quiet: bool = False) -> tuple[int, list[str]]:
+def _detect_and_integrate(
+    schema: dict, repo: Path, existing_nodes: list,
+    quiet: bool = False, strategy: str = "skip",
+) -> tuple[int, list[str]]:
     if not quiet:
         print("\nScanning target repo for unmanaged CLAUDE.md files...")
     managed = {
@@ -217,7 +226,9 @@ def _detect_and_integrate(schema: dict, repo: Path, existing_nodes: list, quiet:
         if symlink_path(repo, rel).is_symlink()
     }
     skipped = set(untracked_paths(schema))
+    existing_conflicts = {e["rel_path"] for e in load_conflict_log()}
     found = 0
+    conflicts = 0
     absorbed_paths: list[str] = []
 
     for claude_file in sorted(repo.rglob("CLAUDE.md")):
@@ -237,6 +248,40 @@ def _detect_and_integrate(schema: dict, repo: Path, existing_nodes: list, quiet:
             continue
 
         wiki_doc = doc_path(rel_path)
+
+        if wiki_doc.exists():
+            if strategy == "skip":
+                if rel_path not in existing_conflicts:
+                    append_log(CONFLICT_LOG, {
+                        "ts": now_ts(),
+                        "rel_path": rel_path,
+                        "repo_file": str(claude_file),
+                        "wiki_doc": str(wiki_doc),
+                    })
+                    set_flag("multiple_versions")
+                if not quiet:
+                    label = rel_path or "(root)"
+                    print(f"  [conflict] {label} — both wiki and repo versions exist; run `merge` to resolve")
+                conflicts += 1
+                continue
+            elif strategy == "wiki":
+                claude_file.unlink()
+                make_symlink(claude_file, wiki_doc, quiet=quiet)
+                if not quiet:
+                    print(f"  [wiki-wins] {claude_file.relative_to(repo)}")
+                if rel_path in existing_conflicts:
+                    clear_conflict_log_for([rel_path])
+                    if not load_conflict_log():
+                        clear_flag("multiple_versions")
+                absorbed_paths.append(rel_path or "(root)")
+                found += 1
+                continue
+            # strategy == "repo": fall through to absorb_real_file (overwrites wiki)
+            if rel_path in existing_conflicts:
+                clear_conflict_log_for([rel_path])
+                if not load_conflict_log():
+                    clear_flag("multiple_versions")
+
         absorb_real_file(claude_file, wiki_doc, quiet=quiet)
         add_to_schema(schema, rel_path)
         absorbed_paths.append(rel_path or "(root)")
@@ -248,7 +293,9 @@ def _detect_and_integrate(schema: dict, repo: Path, existing_nodes: list, quiet:
         save_schema(schema)
         if not quiet:
             print(f"\n  Integrated {found} file(s) and updated schema.yaml.")
-    elif not quiet:
+    if conflicts == 0 and found == 0 and not quiet:
         print("  No unmanaged CLAUDE.md files found.")
+    if conflicts > 0 and not quiet:
+        print(f"\n  {conflicts} conflict(s) flagged. Run `claude-wiki merge` to resolve.")
 
     return found, absorbed_paths

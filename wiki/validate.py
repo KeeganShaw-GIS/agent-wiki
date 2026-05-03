@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 
 from .lib import (
-    INSTRUCTIONS_FILE, SYNC_LOG,
+    INSTRUCTIONS_FILE, SYNC_LOG, UPDATE_PROMPT_EXISTING_FILE, UPDATE_PROMPT_NEW_FILE,
     ancestor_paths, append_log, best_schema_match,
     clear_drift_log_for, clear_flag, clear_new_entry_log,
     doc_path, get_repo_path, load_drift_log, load_new_entry_log,
@@ -40,33 +40,46 @@ def _scan_dir_files(repo: Path, rel_path: str) -> list[str]:
     ]
 
 
+def _apply_template(template: str, variables: dict) -> str:
+    """Substitute {key} placeholders; unmapped keys are left as-is."""
+    result = template
+    for key, value in variables.items():
+        result = result.replace(f"{{{key}}}", str(value))
+    return result
+
+
 def _load_instructions() -> str:
     if INSTRUCTIONS_FILE.exists():
         return f"\n## House Rules (from templates/instructions.md)\n\n{INSTRUCTIONS_FILE.read_text().strip()}\n"
     return ""
 
 
+_INTERACTION_RULES_NOPROMPT = (
+    "Do not ask questions. Make best-effort updates with the available context. "
+    "Note any ambiguities or missing context in your response."
+)
+
+_INTERACTION_RULES_INTERACTIVE = (
+    "You are in interactive mode. Follow these rules:\n"
+    "- If task context is unclear, ask the user to share a ticket or describe the change.\n"
+    "- If a new CLAUDE.md at a deeper path would improve agent guidance, propose it with "
+    "a one-line reason and ask for confirmation. On approval: edit schema.yaml to add the "
+    "path (+ suffix on the new key), then create the doc file at "
+    "docs/<path>/CLAUDE.md and populate it. Do not run any scripts — check-paths runs "
+    "automatically after you finish to create the symlink.\n"
+    "- If source files outside the current scope would improve accuracy, name them and ask "
+    "if the user wants to expand scope.\n"
+    "- If something in the doc looks inconsistent but wasn't touched by this scope, flag it "
+    "and ask: 'I noticed X looks inconsistent — want me to include that fix?'\n"
+    "- Do not change sections unrelated to the scoped files without confirmation."
+)
+
+
 def build_prompt(wiki_doc: Path, source_files: list[str], repo: Path, no_prompt: bool,
                  is_new: bool = False,
                  ancestor_docs: list[tuple[str, str]] | None = None) -> str:
     file_list = "\n".join(f"  {repo / f}" for f in source_files)
-    interaction = (
-        "Do not ask questions. Make best-effort updates with the available context. "
-        "Note any ambiguities or missing context in your response."
-    ) if no_prompt else (
-        "You are in interactive mode. Follow these rules:\n"
-        "- If task context is unclear, ask the user to share a ticket or describe the change.\n"
-        "- If a new CLAUDE.md at a deeper path would improve agent guidance, propose it with "
-        "a one-line reason and ask for confirmation. On approval: edit schema.yaml to add the "
-        "path (+ suffix on the new key), then create the doc file at "
-        "docs/<path>/CLAUDE.md and populate it. Do not run any scripts — check-paths runs "
-        "automatically after you finish to create the symlink.\n"
-        "- If source files outside the current scope would improve accuracy, name them and ask "
-        "if the user wants to expand scope.\n"
-        "- If something in the doc looks inconsistent but wasn't touched by this scope, flag it "
-        "and ask: 'I noticed X looks inconsistent — want me to include that fix?'\n"
-        "- Do not change sections unrelated to the scoped files without confirmation."
-    )
+    interaction_rules = _INTERACTION_RULES_NOPROMPT if no_prompt else _INTERACTION_RULES_INTERACTIVE
 
     if is_new:
         ancestor_block = ""
@@ -79,48 +92,27 @@ def build_prompt(wiki_doc: Path, source_files: list[str], repo: Path, no_prompt:
                 f"\nAncestor documentation (read-only context — do not edit these files):\n\n"
                 f"{sections}\n"
             )
-
-        task_desc = f"""This is a **new documentation file** — it has not been populated yet.
-  {wiki_doc}
-
-Source files at this path:
-{file_list}
-{ancestor_block}
-Instructions:
-1. Read all source files listed above.
-2. Write comprehensive documentation from scratch, replacing the placeholder content entirely.
-3. Do not duplicate content already covered in the ancestor docs above — those files own their scope.
-4. Do not add padding or filler. Only write what is genuinely useful for an LLM agent
-   working in this codebase.
-5. Document anything novel, proprietary, or non-obvious you observe in the code.
-6. Do not edit or remove the `<!-- claude-wiki-meta` block at the bottom of the file — it is
-   managed automatically."""
+        template_file = UPDATE_PROMPT_NEW_FILE
     else:
-        task_desc = f"""The following wiki documentation file may be out of date:
-  {wiki_doc}
+        ancestor_block = ""
+        template_file = UPDATE_PROMPT_EXISTING_FILE
 
-The following source files were recently changed:
-{file_list}
+    if template_file.exists():
+        template = template_file.read_text()
+    else:
+        # Fallback: prompt the user to run init to generate the template
+        raise SystemExit(
+            f"Prompt template not found: {template_file}\n"
+            "Run `claude-wiki init --repo-path <path>` to generate it."
+        )
 
-Instructions:
-1. Read the current source files listed above.
-2. Read the current documentation at {wiki_doc}.
-3. Determine whether the doc accurately reflects the current state of the changed code.
-4. Update only sections that are wrong or missing. Preserve all existing structure.
-5. A parent CLAUDE.md covers only: repo layout, tech stack, global conventions, interface
-   overview (communication, shared types, DB), and review/pattern-discovery rules.
-   Only update a parent if the change affects one of those concerns.
-6. Do not add padding or filler. Only write what is genuinely useful for an LLM agent
-   working in this codebase.
-7. Document anything novel, proprietary, or non-obvious you observe in the changed code.
-8. Do not edit or remove the `<!-- claude-wiki-meta` block at the bottom of the file — it is
-   managed automatically."""
-
-    return f"""You are maintaining live documentation for a software project.
-{_load_instructions()}
-{task_desc}
-
-{interaction}"""
+    return _apply_template(template, {
+        "wiki_doc": wiki_doc,
+        "file_list": file_list,
+        "ancestor_block": ancestor_block,
+        "interaction_rules": interaction_rules,
+        "instructions_block": _load_instructions(),
+    })
 
 
 def _explicit_scope_type(scope: str, repo: Path) -> str:

@@ -43,7 +43,12 @@ def cmd_eject(args):
 
 def cmd_pull_docs(args):
     from .check_paths import run_pull_docs
-    run_pull_docs()
+    run_pull_docs(strategy=args.strategy)
+
+
+def cmd_merge(args):
+    from .merge import run_merge
+    run_merge(scope=args.scope, prompt=args.prompt or "", no_prompt=args.no_prompt)
 
 
 def cmd_hook_setup(args):
@@ -56,11 +61,31 @@ def cmd_hook_setup(args):
 
 
 def cmd_clear_flags(args):
-    from .lib import clear_flag, load_flags, FLAGS_FILE
+    from .lib import (
+        clear_flag, load_flags, load_conflict_log, load_drift_log,
+        load_new_entry_log, FLAGS_FILE,
+    )
+
+    # Auto-resolve flags whose backing log is now empty
+    _auto_clear = {
+        "multiple_versions": lambda: not load_conflict_log(),
+        "drift_detected":    lambda: not load_drift_log(),
+        "new_entry":         lambda: not load_new_entry_log(),
+    }
+    auto_cleared = []
+    for key, is_resolved in _auto_clear.items():
+        if key in load_flags() and is_resolved():
+            clear_flag(key)
+            auto_cleared.append(key)
+    if auto_cleared:
+        for k in auto_cleared:
+            print(f"  [auto-cleared]  {k}  (backing log is empty)")
+
     flags = load_flags()
     if not flags:
         print("No flags set.")
         return
+
     if args.flag:
         clear_flag(*args.flag)
         for f in args.flag:
@@ -105,8 +130,21 @@ def main():
     p_e.add_argument("--scope", default=None, metavar="PATH",
                      help="Schema rel-path to eject (e.g. frontend/walleter). Default: all.")
 
-    sub.add_parser("pull",
-                   help="Scan target repo for unmanaged CLAUDE.md files and absorb them")
+    p_pull = sub.add_parser("pull",
+                            help="Scan target repo for unmanaged CLAUDE.md files and absorb them")
+    p_pull.add_argument(
+        "--strategy", choices=["skip", "wiki", "repo"], default="skip",
+        help="Conflict resolution: skip (default, flag both), wiki (keep wiki), repo (keep repo)",
+    )
+
+    p_merge = sub.add_parser("merge",
+                              help="LLM-assisted merge of conflicting wiki and repo CLAUDE.md versions")
+    p_merge.add_argument("--scope", default=None, metavar="PATH",
+                         help="Limit merge to a specific schema rel-path")
+    p_merge.add_argument("--prompt", default=None, metavar="TEXT",
+                         help="Optional context passed to the LLM to guide the merge")
+    p_merge.add_argument("--no-prompt", action="store_true",
+                         help="Non-interactive mode (no clarifying questions)")
 
     p_hs = sub.add_parser("hook-setup",
                           help="Install git hooks and wiki-path config in the target repo")
@@ -143,6 +181,7 @@ def main():
         "update": cmd_update_docs,
         "eject": cmd_eject,
         "pull": cmd_pull_docs,
+        "merge": cmd_merge,
         "hook-setup": cmd_hook_setup,
     }
     dispatch[args.command](args)

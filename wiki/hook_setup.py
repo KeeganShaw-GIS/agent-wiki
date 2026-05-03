@@ -16,7 +16,7 @@ import os
 import stat
 import subprocess
 
-from .lib import FLAGS_FILE, WIKI_ROOT, get_repo_path, load_schema, symlink_path, walk_schema
+from .lib import FLAGS_FILE, SCHEMA_FILE, WIKI_ROOT, get_repo_path, load_schema, symlink_path, walk_schema
 
 
 _WRAPPER_SCRIPT = """\
@@ -74,6 +74,13 @@ def _setup_claude_wiki_dir(repo):
     rel_flags = os.path.relpath(FLAGS_FILE, cw_dir)
     flags_link.symlink_to(rel_flags)
 
+    # Symlink to wiki's schema.yaml — allows editing from the target repo
+    schema_link = cw_dir / "schema.yaml"
+    if schema_link.exists() or schema_link.is_symlink():
+        schema_link.unlink()
+    rel_schema = os.path.relpath(SCHEMA_FILE, cw_dir)
+    schema_link.symlink_to(rel_schema)
+
     # Add .claude-wiki to .gitignore
     gitignore = repo / ".gitignore"
     entry = ".claude-wiki"
@@ -87,8 +94,9 @@ def _setup_claude_wiki_dir(repo):
         print(f"  [created]  .gitignore  (with .claude-wiki entry)")
 
     print(f"  [created]  .claude-wiki/wiki  (wrapper script)")
-    print(f"  [symlink]  .claude-wiki/llm.md    -> {rel}")
+    print(f"  [symlink]  .claude-wiki/llm.md     -> {rel}")
     print(f"  [symlink]  .claude-wiki/flags.json -> {rel_flags}")
+    print(f"  [symlink]  .claude-wiki/schema.yaml -> {rel_schema}")
 
 
 def run_hook_setup(

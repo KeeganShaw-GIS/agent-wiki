@@ -14,9 +14,14 @@ CONFIG_FILE = WIKI_ROOT / "config.json"
 DOCS_ROOT = WIKI_ROOT / "docs"
 TEMPLATE_FILE = WIKI_ROOT / "templates" / "CLAUDE.template.md"
 INSTRUCTIONS_FILE = WIKI_ROOT / "templates" / "instructions.md"
+MERGE_PROMPT_FILE = WIKI_ROOT / "templates" / "merge-prompt.md"
+UPDATE_PROMPT_NEW_FILE = WIKI_ROOT / "templates" / "update-prompt-new.md"
+UPDATE_PROMPT_EXISTING_FILE = WIKI_ROOT / "templates" / "update-prompt-existing.md"
 DRIFT_LOG = WIKI_ROOT / "logs" / "drift.jsonl"
 SYNC_LOG = WIKI_ROOT / "logs" / "sync.jsonl"
 NEW_ENTRY_LOG = WIKI_ROOT / "logs" / "new-entry.jsonl"
+CONFLICT_LOG = WIKI_ROOT / "logs" / "conflict.jsonl"
+MERGE_LOG = WIKI_ROOT / "logs" / "merge.jsonl"
 FLAGS_FILE = WIKI_ROOT / "logs" / "flags.json"
 
 
@@ -403,6 +408,30 @@ def clear_new_entry_log(processed_rel_paths: Optional[list[str]] = None):
         return
     remaining = [e for e in load_new_entry_log() if e.get("rel_path") not in processed_rel_paths]
     NEW_ENTRY_LOG.write_text("".join(json.dumps(e) + "\n" for e in remaining))
+
+
+# ── Conflict log ──────────────────────────────────────────────────────────────
+
+def load_conflict_log() -> list[dict]:
+    if not CONFLICT_LOG.exists():
+        return []
+    entries = []
+    for line in CONFLICT_LOG.read_text().strip().split("\n"):
+        line = line.strip()
+        if line:
+            entries.append(json.loads(line))
+    return entries
+
+
+def clear_conflict_log_for(resolved_rel_paths: Optional[list[str]] = None):
+    """Remove resolved entries. Pass None to clear all."""
+    if not CONFLICT_LOG.exists():
+        return
+    if resolved_rel_paths is None:
+        CONFLICT_LOG.write_text("")
+        return
+    remaining = [e for e in load_conflict_log() if e.get("rel_path") not in resolved_rel_paths]
+    CONFLICT_LOG.write_text("".join(json.dumps(e) + "\n" for e in remaining))
 
 
 # ── Flags ─────────────────────────────────────────────────────────────────────

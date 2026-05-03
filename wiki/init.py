@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
-from .lib import CONFIG_FILE, INSTRUCTIONS_FILE, SCHEMA_FILE, WIKI_ROOT, save_config, save_schema
+from .lib import (
+    CONFIG_FILE, INSTRUCTIONS_FILE, MERGE_PROMPT_FILE, SCHEMA_FILE,
+    UPDATE_PROMPT_EXISTING_FILE, UPDATE_PROMPT_NEW_FILE, WIKI_ROOT,
+    save_config, save_schema,
+)
 
 LLM_MD_FILE = WIKI_ROOT / "llm.md"
 
@@ -307,6 +311,138 @@ def _ensure_instructions():
         print("  [exists]   templates/instructions.md  (skipped — already customized)")
 
 
+# ── LLM prompt templates ──────────────────────────────────────────────────────
+# These are written once on init and can be freely edited. They are loaded at
+# runtime, so changes take effect on the next run — no reinstall needed.
+#
+# Placeholder tokens (filled by Python at runtime):
+#   update-prompt-new.md      {wiki_doc}, {file_list}, {ancestor_block}, {interaction_rules}, {instructions_block}
+#   update-prompt-existing.md {wiki_doc}, {file_list}, {interaction_rules}, {instructions_block}
+#   merge-prompt.md           {wiki_doc}, {repo_file}, {wiki_git_log}, {repo_git_log}, {template_section}, {user_context}
+
+_DEFAULT_UPDATE_PROMPT_NEW = """\
+You are maintaining live documentation for a software project.
+{instructions_block}
+This is a **new documentation file** — it has not been populated yet.
+  {wiki_doc}
+
+Source files at this path:
+{file_list}
+{ancestor_block}
+Instructions:
+1. Read all source files listed above.
+2. Write comprehensive documentation from scratch, replacing the placeholder content entirely.
+3. Do not duplicate content already covered in the ancestor docs above — those files own their scope.
+4. Do not add padding or filler. Only write what is genuinely useful for an LLM agent
+   working in this codebase.
+5. Document anything novel, proprietary, or non-obvious you observe in the code.
+6. Do not edit or remove the `<!-- claude-wiki-meta` block at the bottom of the file — it is
+   managed automatically.
+
+{interaction_rules}
+"""
+
+_DEFAULT_UPDATE_PROMPT_EXISTING = """\
+You are maintaining live documentation for a software project.
+{instructions_block}
+The following wiki documentation file may be out of date:
+  {wiki_doc}
+
+The following source files were recently changed:
+{file_list}
+
+Instructions:
+1. Read the current source files listed above.
+2. Read the current documentation at {wiki_doc}.
+3. Determine whether the doc accurately reflects the current state of the changed code.
+4. Update only sections that are wrong or missing. Preserve all existing structure.
+5. A parent CLAUDE.md covers only: repo layout, tech stack, global conventions, interface
+   overview (communication, shared types, DB), and review/pattern-discovery rules.
+   Only update a parent if the change affects one of those concerns.
+6. Do not add padding or filler. Only write what is genuinely useful for an LLM agent
+   working in this codebase.
+7. Document anything novel, proprietary, or non-obvious you observe in the changed code.
+8. Do not edit or remove the `<!-- claude-wiki-meta` block at the bottom of the file — it is
+   managed automatically.
+
+{interaction_rules}
+"""
+
+_DEFAULT_MERGE_PROMPT = """\
+You are resolving a documentation conflict for a claude-wiki managed project.
+
+Two versions of the same CLAUDE.md file exist. Your job is to produce a single, authoritative
+merged version that follows all template rules and preserves all valuable content.
+
+---
+
+## Wiki version (canonical managed copy)
+
+Path: {wiki_doc}
+
+Git history (wiki repo):
+{wiki_git_log}
+
+---
+
+## Repo version (unmanaged edit made directly in the target repo)
+
+Path: {repo_file}
+
+Git history (target repo):
+{repo_git_log}
+
+---
+{template_section}
+## Merge instructions
+
+**Step 1 — Assess intent and date context**
+- Compare the git histories above. Determine whether:
+  - One version is simply outdated (superseded by the other), OR
+  - Both were edited independently on separate branches and both contain relevant information.
+- Note whether the two versions cover overlapping concerns or complementary ones.
+- State your assessment briefly as part of your rationale output (see Step 5).
+
+**Step 2 — Evaluate template adherence**
+- Compare each version against the required CLAUDE.md structure above.
+- Note which version more closely follows the structural rules and content quality guidelines
+  (no filler, no "what the code does" explanations, only non-obvious/proprietary information, etc.).
+- The version with stronger template adherence is the **preferred base**.
+
+**Step 3 — Merge**
+- Use the preferred base as the structural foundation.
+- Incorporate unique, non-redundant concepts from the other version that add genuine value.
+- Do not duplicate content. Do not add padding. Only include what a future LLM agent
+  working in this codebase would genuinely need.
+- Resolve any contradictions in favor of the more recent or more specific information
+  (use git dates to inform this).
+
+**Step 4 — Write the result**
+- Write the merged content to: {wiki_doc}
+- Preserve the `<!-- claude-wiki-meta` block at the bottom exactly as-is.
+- Do not touch {repo_file} — it will be replaced with a symlink automatically.
+
+**Step 5 — Output rationale**
+After writing, output a structured rationale in this exact format (this is captured in the merge log):
+
+MERGE RATIONALE
+  preferred-base: wiki|repo
+  reason: <one sentence on why that base was chosen>
+  intent-overlap: yes|no|partial
+  outdated-version: wiki|repo|neither|both-current
+  changes-from-other: <comma-separated list of concepts pulled from the non-base version, or "none">
+  contradictions-resolved: <brief note, or "none">
+{user_context}"""
+
+
+def _ensure_prompt_template(path: Path, default: str, label: str):
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(default)
+        print(f"  [created]  {label}  (edit to customize)")
+    else:
+        print(f"  [exists]   {label}  (skipped — already customized)")
+
 
 def run_init(
     repo_path: str,
@@ -333,6 +469,12 @@ def run_init(
     _ensure_wiki_instructions()
     _ensure_llm_md()
     _ensure_instructions()
+    _ensure_prompt_template(UPDATE_PROMPT_NEW_FILE, _DEFAULT_UPDATE_PROMPT_NEW,
+                            "templates/update-prompt-new.md")
+    _ensure_prompt_template(UPDATE_PROMPT_EXISTING_FILE, _DEFAULT_UPDATE_PROMPT_EXISTING,
+                            "templates/update-prompt-existing.md")
+    _ensure_prompt_template(MERGE_PROMPT_FILE, _DEFAULT_MERGE_PROMPT,
+                            "templates/merge-prompt.md")
     _ensure_schema(repo)
 
     absorbed_count = 0
