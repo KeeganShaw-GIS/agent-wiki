@@ -12,10 +12,10 @@ jobs:
         include:
           - os: macos-latest
             arch: arm64
-            name: claude-wiki-macos-arm64
+            name: agent-wiki-macos-arm64
           - os: ubuntu-latest
             arch: x86_64
-            name: claude-wiki-linux-x86_64
+            name: agent-wiki-linux-x86_64
 
     runs-on: ${{ matrix.os }}
 

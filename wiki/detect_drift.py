@@ -12,7 +12,7 @@ call manually at any time.
 from .lib import (
     DRIFT_LOG,
     ancestor_paths, append_log, commit_is_ancestor, doc_path,
-    git_head_hash, git_log_range, git_staged_files, load_drift_log,
+    get_doc_filename, git_head_hash, git_log_range, git_staged_files, load_drift_log,
     load_schema, now_ts, read_metadata_footer, schema_paths,
     get_repo_path, set_flag, walk_schema,
 )
@@ -62,7 +62,7 @@ def run_detect_drift(staged_only: bool = False):
             "ts": now_ts(),
             "trigger": "pre-commit" if staged_only else "manual",
             "rel_path": rel_path,
-            "wiki_doc": f"docs/{rel_path}/CLAUDE.md" if rel_path else "docs/CLAUDE.md",
+            "wiki_doc": f"docs/{rel_path}/{get_doc_filename()}" if rel_path else f"docs/{get_doc_filename()}",
             "from_commit": from_commit,
             "to_commit": head,
             "changed_files": changed,

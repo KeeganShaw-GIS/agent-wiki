@@ -1,9 +1,9 @@
-"""claude-wiki — documentation wiki manager for Claude Code CLAUDE.md files.
+"""agent-wiki — documentation wiki manager for LLM agents.
 
 Commands:
   init              One-time setup for a target repo
   push              Sync schema <-> wiki docs <-> target symlinks
-  pull              Absorb unmanaged CLAUDE.md files from the target repo
+  pull              Absorb unmanaged doc files from the target repo
   detect-drift      Log changed files that need doc updates (pre-commit)
   status            Show pending drift statistics
 """
@@ -18,6 +18,7 @@ def cmd_init(args):
         repo_path=args.repo_path,
         no_detect_target_docs=args.no_detect_target_docs,
         no_hooks=args.no_hooks,
+        doc_filename=args.doc_filename,
     )
 
 
@@ -69,7 +70,7 @@ def _stamp_drift_checked():
         rel_path = entry.get("rel_path", "")
         dp = doc_path(rel_path)
         if dp.exists():
-            write_metadata_footer(dp, rel_path, "claude-wiki clear-flags",
+            write_metadata_footer(dp, rel_path, "agent-wiki clear-flags",
                                   source_commit=head)
             print(f"  [stamped]  {entry.get('wiki_doc', rel_path)}  SourceCommitID={head}")
 
@@ -78,15 +79,15 @@ def cmd_add_agent(args):
     from pathlib import Path
     from .lib import get_repo_path
     repo = get_repo_path()
-    agents_dir = repo / ".claude-wiki" / "agents"
+    agents_dir = repo / ".agent-wiki" / "agents"
     agents_dir.mkdir(parents=True, exist_ok=True)
     name = args.name if args.name.endswith(".md") else args.name + ".md"
     target = agents_dir / name
     if target.exists():
-        print(f"  [exists]  .claude-wiki/agents/{name}")
+        print(f"  [exists]  .agent-wiki/agents/{name}")
         return
     target.write_text("")
-    print(f"  [created]  .claude-wiki/agents/{name}")
+    print(f"  [created]  .agent-wiki/agents/{name}")
 
 
 def cmd_clear_flags(args):
@@ -138,7 +139,7 @@ def cmd_clear_flags(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="claude-wiki",
+        prog="agent-wiki",
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -146,10 +147,12 @@ def main():
 
     p_init = sub.add_parser("init", help="One-time setup for a target repo")
     p_init.add_argument("--repo-path", required=True, metavar="PATH")
+    p_init.add_argument("--doc-filename", default=None, metavar="FILENAME",
+                        help="Doc filename to manage (e.g. CLAUDE.md, AGENTS.md). Prompted if omitted.")
     p_init.add_argument("--no-detect-target-docs", action="store_true",
-                        help="Skip absorbing unmanaged CLAUDE.md files from the target repo")
+                        help="Skip absorbing unmanaged doc files from the target repo")
     p_init.add_argument("--no-hooks", action="store_true",
-                        help="Skip installing git hooks and .claude-wiki/ in the target repo")
+                        help="Skip installing git hooks and .agent-wiki/ in the target repo")
 
     p_pd = sub.add_parser("push", help="Sync schema <-> wiki <-> target symlinks")
     p_pd.add_argument("--detect-target-docs", action="store_true")
@@ -163,10 +166,10 @@ def main():
                      help="Schema rel-path to eject (e.g. frontend/walleter). Default: all.")
 
     p_pull = sub.add_parser("pull",
-                            help="Scan target repo for unmanaged CLAUDE.md files and absorb them")
+                            help="Scan target repo for unmanaged doc files and absorb them")
     p_pull.add_argument(
         "--strategy", choices=["skip", "wiki", "repo"], default="skip",
-        help="Conflict resolution: skip (default, flag both), wiki (keep wiki), repo (keep repo)",
+        help="Conflict resolution: skip (default, flag both), wiki (keep wiki), repo (keep repo doc)",
     )
 
     p_hs = sub.add_parser("hook-setup",
@@ -176,13 +179,13 @@ def main():
     p_hs.add_argument("--no-post-checkout", action="store_true",
                       help="Skip installing the post-checkout hook (push --verify)")
     p_hs.add_argument("--no-skip-worktree", action="store_true",
-                      help="Skip marking CLAUDE.md symlinks as skip-worktree")
+                      help="Skip marking doc symlinks as skip-worktree")
 
     p_st = sub.add_parser("status", help="Show pending drift statistics")
     p_st.add_argument("--scope", default=None, metavar="SCOPE",
                       help="Scope: path, diff, staged, or git ref. Default: drift + new-entry logs.")
 
-    p_aa = sub.add_parser("add-agent", help="Create a blank agent doc in .claude-wiki/agents/")
+    p_aa = sub.add_parser("add-agent", help="Create a blank doc in .agent-wiki/agents/")
     p_aa.add_argument("--name", required=True, metavar="NAME",
                       help="Agent doc filename (e.g. researcher or researcher.md)")
 
@@ -199,8 +202,8 @@ def main():
             print(
                 "Error: no config.json found in current directory.\n"
                 "Run init first:\n"
-                "  claude-wiki init --repo-path <path>\n\n"
-                "Make sure you're running claude-wiki from your wiki root directory."
+                "  agent-wiki init --repo-path <path>\n\n"
+                "Make sure you're running agent-wiki from your wiki root directory."
             )
             sys.exit(1)
 

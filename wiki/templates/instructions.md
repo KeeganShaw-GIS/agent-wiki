@@ -1,6 +1,6 @@
 # Doc Writing Instructions
 
-These rules govern how CLAUDE.md files are written and updated.
+These rules govern how agent doc files are written and updated.
 Edit this file to match your team's preferences — it is injected into every update run.
 
 ## Voice & Density
@@ -28,4 +28,4 @@ Edit this file to match your team's preferences — it is injected into every up
 ## What to Omit
 - Anything self-evident from well-named code.
 - Generic boilerplate that adds no actionable signal.
-- Information already documented in an ancestor CLAUDE.md.
+- Information already documented in an ancestor doc file.

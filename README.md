@@ -1,25 +1,25 @@
-# claude-wiki
+# agent-wiki
 
-A documentation management system for [Claude Code](https://claude.ai/code). Maintains `CLAUDE.md` files for a target git repo in a separate wiki repo and symlinks them in — so Claude Code loads the right docs at the right path depth automatically, without polluting the target's git history.
+A documentation wiki manager for LLM agents. Maintains `CLAUDE.md`, `AGENTS.md`, or similar agent instruction files for a target git repo in a separate wiki repo and symlinks them in — so your LLM agent loads the right docs at the right path depth automatically, without polluting the target's git history.
 
-Requires the [Claude Code CLI](https://claude.ai/code) (`claude --version` to verify).
+Works with any agent that respects per-directory instruction files: **Claude Code** (`CLAUDE.md`), **OpenAI Codex** (`AGENTS.md`), or any custom filename. Also generates an `AGENT-INDEX.md` in `.agent-wiki/` as a navigation hub for tools like Cursor and GitHub Copilot that don't support hierarchical doc loading.
 
 ## Install
 
 **macOS / Linux — standalone binary (no Python required):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KeeganShaw-GIS/claude-wiki/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/KeeganShaw-GIS/agent-wiki/main/install.sh | bash
 ```
 
 **Any platform — pip (requires Python 3.11+):**
 
 ```bash
 # Latest
-pipx install git+https://github.com/KeeganShaw-GIS/claude-wiki.git
+pipx install git+https://github.com/KeeganShaw-GIS/agent-wiki.git
 
 # Specific version
-pipx install git+https://github.com/KeeganShaw-GIS/claude-wiki.git@v0.1.0
+pipx install git+https://github.com/KeeganShaw-GIS/agent-wiki.git@v0.1.0
 ```
 
 ---
@@ -30,10 +30,10 @@ pipx install git+https://github.com/KeeganShaw-GIS/claude-wiki.git@v0.1.0
 # 1. Init — create config, absorb existing docs, install hooks
 mkdir my-project-wiki && cd my-project-wiki
 git init
-claude-wiki init --repo-path /path/to/your/repo
+agent-wiki init --repo-path /path/to/your/repo
 
 # 2. Edit schema.yaml to promote paths to doc nodes (append +), then:
-claude-wiki push    # create placeholder docs + symlinks
+agent-wiki push    # create placeholder docs + symlinks
 
 # 3. Done — symlinks are live, populate docs manually
 ```
@@ -42,11 +42,11 @@ Every command must be run from the wiki root (where `config.json` lives).
 
 ### Ejecting
 
-`eject` copies each wiki doc back into the target repo as a real file, removes the symlinks, and stops the wiki from tracking those paths. After ejecting, the target repo owns its `CLAUDE.md` files again — the wiki no longer manages or updates them.
+`eject` copies each wiki doc back into the target repo as a real file, removes the symlinks, and stops the wiki from tracking those paths. After ejecting, the target repo owns its doc files again — the wiki no longer manages or updates them.
 
 ```bash
-claude-wiki eject           # eject all managed paths
-claude-wiki eject --scope frontend/survey  # eject a single path
+agent-wiki eject           # eject all managed paths
+agent-wiki eject --scope frontend/survey  # eject a single path
 ```
 
 ---
@@ -55,10 +55,10 @@ claude-wiki eject --scope frontend/survey  # eject a single path
 
 ### `schema.yaml`
 
-Defines which paths in the target repo have managed `CLAUDE.md` files. Generated automatically on `init` from the target repo's top-level directories — promote paths to doc nodes by appending `+`.
+Defines which paths in the target repo have managed doc files. Generated automatically on `init` from the target repo's top-level directories — promote paths to doc nodes by appending `+`.
 
 ```yaml
-# + = managed doc node (CLAUDE.md in docs/ + symlink in target)
+# + = managed doc node (<doc> in docs/ + symlink in target)
 # ~ = untracked (real file stays in target, wiki ignores it)
 # (no suffix) = structural container only, no doc
 root+:
@@ -79,11 +79,11 @@ Set by `init`, gitignored. Stores the target repo path and options.
   "repo_path": "/path/to/your/repo",
   "repo_name": "my-repo",
   "skip_worktree": true,
-  "claude_path": "/optional/path/to/claude"
+  "doc_filename": "CLAUDE.md"
 }
 ```
 
-Set `claude_path` if `claude` is not on your `PATH`.
+`doc_filename` is set during `init` (prompted interactively or via `--doc-filename`). Common values: `CLAUDE.md` (Claude Code), `AGENTS.md` (OpenAI Codex).
 
 ---
 
@@ -93,30 +93,35 @@ Wiki docs live in `docs/`, mirroring the target repo's path structure:
 
 ```
 docs/
-├── CLAUDE.md               ← target repo root
+├── <doc>                   ← target repo root
 ├── frontend/
-│   ├── CLAUDE.md           ← target frontend/
+│   ├── <doc>               ← target frontend/
 │   └── survey/
-│       └── CLAUDE.md       ← target frontend/survey/
+│       └── <doc>           ← target frontend/survey/
 └── server/
-    └── CLAUDE.md
+    └── <doc>
 ```
+(`<doc>` = your configured `doc_filename`, e.g. `CLAUDE.md` or `AGENTS.md`)
 
-### Output → symlinks
+### Output → symlinks + AGENT-INDEX.md
 
 For each `+` node in `schema.yaml`, `push` creates a symlink in the target repo pointing back to the wiki doc:
 
 ```
-target/frontend/survey/CLAUDE.md  →  ../../../my-wiki/docs/frontend/survey/CLAUDE.md
+target/frontend/survey/AGENTS.md  →  ../../../my-wiki/docs/frontend/survey/AGENTS.md
 ```
 
-Editing `docs/frontend/survey/CLAUDE.md` in the wiki is immediately reflected in the target. Symlinks are marked `skip-worktree` in the target repo so git never sees them as changes.
+The **root symlink** (`CLAUDE.md` or `AGENTS.md` at the target repo root) is special — it points to `.agent-wiki/AGENT-INDEX.md`, a generated navigation hub listing the full doc tree and links to agent resources. Per-directory symlinks work as normal for hierarchy-aware tools; the index serves non-hierarchy tools.
+
+`push` also creates **mirror symlinks** inside `.agent-wiki/` that mirror the full doc tree, so all docs are accessible from within the gitignored directory.
+
+Symlinks are marked `skip-worktree` in the target repo so git never sees them as changes.
 
 ### `templates/instructions.md`
 
-Created on `init`. House rules for writing CLAUDE.md content — edit it to control doc style and structure. Never overwritten after first creation.
+Created on `init`. House rules for writing doc content — edit it to control doc style and structure. Never overwritten after first creation.
 
-### `templates/CLAUDE.template.md`
+### `templates/AGENT.template.md`
 
 Placeholder written by `push` when a new doc is created. Contains a "not yet populated" banner. Populate docs manually after running `push`.
 
@@ -133,20 +138,24 @@ Placeholder written by `push` when a new doc is created. Contains a "not yet pop
 One-time setup. Run from an empty wiki directory. Fully deterministic — no LLM is invoked. After init, populate placeholder docs manually.
 
 ```bash
-claude-wiki init --repo-path /path/to/repo
+agent-wiki init --repo-path /path/to/repo
+# Prompts: which doc filename? (CLAUDE.md / AGENTS.md / custom)
 
-# Skip absorbing existing CLAUDE.md files from the target
-claude-wiki init --repo-path /path/to/repo --no-detect-target-docs
+# Skip the interactive prompt — set filename directly
+agent-wiki init --repo-path /path/to/repo --doc-filename AGENTS.md
+
+# Skip absorbing existing doc files from the target
+agent-wiki init --repo-path /path/to/repo --no-detect-target-docs
 
 # Skip installing git hooks
-claude-wiki init --repo-path /path/to/repo --no-hooks
+agent-wiki init --repo-path /path/to/repo --no-hooks
 ```
 
 `init` runs these steps in order:
-1. Saves `config.json` `D`
+1. Prompts for `doc_filename` (or uses `--doc-filename`), saves `config.json` `D`
 2. Generates `llm.md` and `templates/instructions.md` `D`
 3. Generates `schema.yaml` from the target repo's top-level directories `D`
-4. Absorbs any existing `CLAUDE.md` files from the target via `pull` (skip with `--no-detect-target-docs`) `D`
+4. Absorbs any existing doc files from the target via `pull` (skip with `--no-detect-target-docs`) `D`
 5. Runs `push` to create docs and symlinks `D`
 6. Runs `hook-setup` to install git hooks (skip with `--no-hooks`) `D`
 7. Prints any new-entry paths that need manual doc population
@@ -155,30 +164,30 @@ claude-wiki init --repo-path /path/to/repo --no-hooks
 
 ### `hook-setup` `D`
 
-Installs git hooks and the `.claude-wiki/` wrapper in the target repo. Called automatically by `init`; run manually to re-install or adjust stages. Fully deterministic — no LLM.
+Installs git hooks and the `.agent-wiki/` wrapper in the target repo. Called automatically by `init`; run manually to re-install or adjust stages. Fully deterministic — no LLM.
 
-Hooks locate the wiki automatically by resolving the `CLAUDE.md` symlink at the target repo root — no separate config file needed.
+Hooks locate the wiki automatically by resolving the root doc symlink — no separate config file needed.
 
 ```bash
-claude-wiki hook-setup
+agent-wiki hook-setup
 
 # Skip individual stages
-claude-wiki hook-setup --no-pre-commit
-claude-wiki hook-setup --no-post-checkout
-claude-wiki hook-setup --no-skip-worktree
+agent-wiki hook-setup --no-pre-commit
+agent-wiki hook-setup --no-post-checkout
+agent-wiki hook-setup --no-skip-worktree
 ```
 
 ---
 
 ### `pull` `D`
 
-Scans the target repo for unmanaged real `CLAUDE.md` files (not symlinks), absorbs their content into `docs/`, replaces them with symlinks, and adds them to `schema.yaml`. Logs each absorbed path to `logs/new-entry.jsonl`.
+Scans the target repo for unmanaged real doc files (not symlinks), absorbs their content into `docs/`, replaces them with symlinks, and adds them to `schema.yaml`. Logs each absorbed path to `logs/new-entry.jsonl`.
 
 ```bash
-claude-wiki pull
+agent-wiki pull
 ```
 
-Use this when cloning a target repo that already has `CLAUDE.md` files, or when someone added one manually without going through the wiki.
+Use this when cloning a target repo that already has doc files, or when someone added one manually without going through the wiki.
 
 ---
 
@@ -188,13 +197,13 @@ Reconciles `schema.yaml` ↔ `docs/` ↔ symlinks in the target. Run after editi
 
 ```bash
 # Sync schema with docs and symlinks
-claude-wiki push
+agent-wiki push
 
-# Also absorb unmanaged CLAUDE.md files from the target
-claude-wiki push --detect-target-docs
+# Also absorb unmanaged doc files from the target
+agent-wiki push --detect-target-docs
 
 # Rebuild only broken or missing symlinks
-claude-wiki push --verify
+agent-wiki push --verify
 ```
 
 ---
@@ -206,8 +215,8 @@ Computes drift by comparing each doc's `SourceCommitID` footer against `HEAD` in
 Called automatically by the pre-commit hook (`--staged`). Safe to run manually at any time, including on repos that never had the hook installed.
 
 ```bash
-claude-wiki detect-drift           # recompute all drift from SourceCommitIDs
-claude-wiki detect-drift --staged  # narrow to staged files only
+agent-wiki detect-drift           # recompute all drift from SourceCommitIDs
+agent-wiki detect-drift --staged  # narrow to staged files only
 ```
 
 ---
@@ -218,44 +227,44 @@ Shows pending drift statistics — which docs need attention and why. Reads `dri
 
 ```bash
 # Show all pending docs from drift + new-entry logs
-claude-wiki status
+agent-wiki status
 
 # Show docs affected by a specific path, ref, or diff
-claude-wiki status --scope frontend/survey
-claude-wiki status --scope diff
-claude-wiki status --scope staged
+agent-wiki status --scope frontend/survey
+agent-wiki status --scope diff
+agent-wiki status --scope staged
 ```
 
 ---
 
 ### `eject` `D`
 
-Copies each managed `CLAUDE.md` back into the target repo as a real file and removes the symlinks. The target repo owns its docs again — the wiki stops tracking and updating those paths. Wiki docs in `docs/` are preserved untouched. Run `push` to re-attach.
+Copies each managed doc file back into the target repo as a real file and removes the symlinks. The target repo owns its docs again — the wiki stops tracking and updating those paths. Wiki docs in `docs/` are preserved untouched. Run `push` to re-attach.
 
 ```bash
 # Eject all managed paths
-claude-wiki eject
+agent-wiki eject
 
 # Eject a single path
-claude-wiki eject --scope frontend/survey
+agent-wiki eject --scope frontend/survey
 ```
 
 ---
 
 ### `add-agent` `D`
 
-Creates a blank `.md` file in `.claude-wiki/agents/` of the target repo. Use this to add custom agent guidance docs that live alongside the standard `llm.md`, `WIKI_UPDATE.md`, and `WIKI_MERGE.md` symlinks.
+Creates a blank `.md` file in `.agent-wiki/agents/` of the target repo. Use this to add custom agent guidance docs that live alongside the standard `llm.md`, `WIKI_UPDATE.md`, and `WIKI_MERGE.md` symlinks.
 
 ```bash
-claude-wiki add-agent --name researcher
-# creates .claude-wiki/agents/researcher.md  (empty)
+agent-wiki add-agent --name researcher
+# creates .agent-wiki/agents/researcher.md  (empty)
 ```
 
 ---
 
 ## Hooks
 
-All hooks are **fully deterministic** — no LLM is ever invoked by a hook. The drift log they build up is visible via `claude-wiki status`.
+All hooks are **fully deterministic** — no LLM is ever invoked by a hook. The drift log they build up is visible via `agent-wiki status`.
 
 | Hook | Trigger | What it runs | `D/🤖` |
 |------|---------|-------------|--------|
@@ -264,16 +273,16 @@ All hooks are **fully deterministic** — no LLM is ever invoked by a hook. The 
 
 ### `hook-setup` stages
 
-Run automatically by `init` (or manually via `claude-wiki hook-setup`). Each hook stage can be skipped independently. The `.claude-wiki/` directory is always created — hooks depend on it.
+Run automatically by `init` (or manually via `agent-wiki hook-setup`). Each hook stage can be skipped independently. The `.agent-wiki/` directory is always created — hooks depend on it.
 
-Hooks call `.claude-wiki/wiki` in the target repo. The wrapper resolves the wiki root from `.claude-wiki/wiki-path` — no hardcoded paths, no separate config file needed.
+Hooks call `.agent-wiki/wiki` in the target repo. The wrapper resolves the wiki root from `.agent-wiki/wiki-path` — no hardcoded paths, no separate config file needed.
 
 | Stage | Flag to skip | `D/🤖` | What it does |
 |-------|-------------|--------|-------------|
-| `.claude-wiki/` | (always) | `D` | Creates `.claude-wiki/wiki` wrapper script, operational symlinks (flags.json, schema.yaml, CLAUDE.template.md, instructions.md), and the `agents/` subdirectory with llm.md, WIKI_UPDATE.md, WIKI_MERGE.md symlinks. Adds `.claude-wiki` to `.gitignore`. |
+| `.agent-wiki/` | (always) | `D` | Creates `.agent-wiki/wiki` wrapper script, operational symlinks (flags.json, schema.yaml, AGENT.template.md, instructions.md), and the `agents/` subdirectory with llm.md, WIKI_UPDATE.md, WIKI_MERGE.md symlinks. Adds `.agent-wiki` to `.gitignore`. |
 | `pre-commit` | `--no-pre-commit` | `D` | Installs `.git/hooks/pre-commit`. Before each commit, runs `detect-drift --staged` to recompute drift for staged files. Always exits 0 — never blocks a commit. |
 | `post-checkout` | `--no-post-checkout` | `D` | Installs `.git/hooks/post-checkout`. After checkout or clone, runs `push` to create any missing docs and symlinks. New docs get a placeholder template and are logged to `new-entry.jsonl`. |
-| `skip-worktree` | `--no-skip-worktree` | `D` | Marks every managed `CLAUDE.md` symlink `skip-worktree` so git never shows them as unstaged changes. Skip if you use sparse checkout or a tool that resets index flags. |
+| `skip-worktree` | `--no-skip-worktree` | `D` | Marks every managed doc symlink `skip-worktree` so git never shows them as unstaged changes. Skip if you use sparse checkout or a tool that resets index flags. |
 
 ---
 
@@ -287,10 +296,10 @@ my-project-wiki/
 ├── config.json              # Target repo path — gitignored
 ├── llm.md                   # LLM reference for working in this wiki
 ├── docs/                    # All documentation; mirrors target repo structure
-│   └── <path>/CLAUDE.md
+│   └── <path>/<doc>
 ├── templates/
-│   ├── CLAUDE.template.md   # Placeholder written when push creates a new doc
-│   ├── instructions.md      # House rules for writing CLAUDE.md content
+│   ├── AGENT.template.md   # Placeholder written when push creates a new doc
+│   ├── instructions.md      # House rules for writing doc content
 │   ├── WIKI_UPDATE.md       # Step-by-step guide for updating docs (user-editable)
 │   └── WIKI_MERGE.md        # Step-by-step guide for resolving conflicts (user-editable)
 ├── logs/
@@ -305,14 +314,14 @@ my-project-wiki/
 
 ```
 my-target-repo/
-├── CLAUDE.md                # Symlink → <wiki>/docs/CLAUDE.md
-├── <path>/CLAUDE.md         # Symlinks for each managed path
-└── .claude-wiki/            # Gitignored — created by hook-setup
-    ├── wiki                 # Wrapper: runs claude-wiki from inside the target repo
+├── <doc>                    # Symlink → .agent-wiki/AGENT-INDEX.md  (root entry point)
+├── <path>/<doc>             # Symlinks for each managed path → wiki docs
+└── .agent-wiki/            # Gitignored — created by hook-setup
+    ├── wiki                 # Wrapper: runs agent-wiki from inside the target repo
     ├── wiki-path            # Path to the wiki root (read by wrapper)
     ├── flags.json           # Symlink → <wiki>/logs/flags.json
     ├── schema.yaml          # Symlink → <wiki>/schema.yaml
-    ├── CLAUDE.template.md   # Symlink → <wiki>/templates/CLAUDE.template.md
+    ├── AGENT.template.md   # Symlink → <wiki>/templates/AGENT.template.md
     ├── instructions.md      # Symlink → <wiki>/templates/instructions.md
     └── agents/              # LLM guidance docs
         ├── llm.md           # Symlink → <wiki>/llm.md
@@ -324,20 +333,20 @@ my-target-repo/
 Developers can run any wiki command directly from the target repo:
 
 ```bash
-.claude-wiki/wiki push
-.claude-wiki/wiki status
+.agent-wiki/wiki push
+.agent-wiki/wiki status
 ```
 
-Claude Code agents working in the target repo can do the same — they see the `CLAUDE.md` outputs via symlinks and can run wiki commands through `.claude-wiki/wiki`.
+LLM agents working in the target repo can do the same — they see the doc symlinks and can run wiki commands through `.agent-wiki/wiki`.
 
 ### Doc metadata footer
 
-Every managed `CLAUDE.md` gets a metadata block appended automatically:
+Every managed doc file gets a metadata block appended automatically:
 
 ```
-<!-- claude-wiki-meta
-Location: frontend/survey/CLAUDE.md
-LastTouchedBy: claude-wiki push
+<!-- agent-wiki-meta
+Location: frontend/survey/AGENTS.md
+LastTouchedBy: agent-wiki push
 ChangeDate: 2026-05-01
 WikiCommitID: abc1234
 SourceCommitID: def5678

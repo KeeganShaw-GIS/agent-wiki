@@ -1,8 +1,7 @@
-"""Shared utilities for the claude-wiki package."""
+"""Shared utilities for the agent-wiki package."""
 
 import json
 import os
-import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +11,7 @@ WIKI_ROOT = Path.cwd()
 SCHEMA_FILE = WIKI_ROOT / "schema.yaml"
 CONFIG_FILE = WIKI_ROOT / "config.json"
 DOCS_ROOT = WIKI_ROOT / "docs"
-TEMPLATE_FILE = WIKI_ROOT / "templates" / "CLAUDE.template.md"
+TEMPLATE_FILE = WIKI_ROOT / "templates" / "AGENT.template.md"
 INSTRUCTIONS_FILE = WIKI_ROOT / "templates" / "instructions.md"
 WIKI_UPDATE_FILE = WIKI_ROOT / "templates" / "WIKI_UPDATE.md"
 WIKI_MERGE_FILE = WIKI_ROOT / "templates" / "WIKI_MERGE.md"
@@ -29,7 +28,7 @@ def load_config() -> dict:
     if not CONFIG_FILE.exists():
         raise SystemExit(
             "No config.json found. Run:\n"
-            "  claude-wiki init --repo-path <path>"
+            "  agent-wiki init --repo-path <path>"
         )
     return json.loads(CONFIG_FILE.read_text())
 
@@ -45,23 +44,14 @@ def get_config_flag(key: str, default=True) -> bool:
         return default
 
 
-def resolve_claude_bin() -> str:
-    """Return the path to the claude CLI, or raise SystemExit with a helpful message."""
+AGENT_INDEX_FILENAME = "AGENT-INDEX.md"
+
+
+def get_doc_filename() -> str:
     try:
-        configured = load_config().get("claude_path")
+        return load_config().get("doc_filename", "CLAUDE.md")
     except SystemExit:
-        configured = None
-
-    candidate = configured or shutil.which("claude")
-    if candidate and Path(candidate).is_file():
-        return candidate
-
-    raise SystemExit(
-        "claude CLI not found.\n\n"
-        "Install it from https://claude.ai/code, then either:\n"
-        "  • Add it to your PATH, or\n"
-        "  • Set \"claude_path\": \"/path/to/claude\" in config.json"
-    )
+        return "CLAUDE.md"
 
 
 def get_repo_path() -> Path:
@@ -111,8 +101,9 @@ def load_schema() -> dict:
 
 
 def save_schema(schema: dict):
+    fn = get_doc_filename()
     header = (
-        "# Keys ending with + have a CLAUDE.md in docs/ and a symlink in the target.\n"
+        f"# Keys ending with + have a {fn} in docs/ and a symlink in the target.\n"
         "# Keys ending with ~ are explicitly untracked (real file stays in target).\n"
         "# Keys without a suffix are structural only (nesting containers, no doc).\n"
     )
@@ -177,15 +168,17 @@ def add_to_schema(schema: dict, rel_path: str):
 # ── Path helpers ─────────────────────────────────────────────────────────────
 
 def doc_path(rel_path: str) -> Path:
+    fn = get_doc_filename()
     if rel_path == "":
-        return DOCS_ROOT / "CLAUDE.md"
-    return DOCS_ROOT / rel_path / "CLAUDE.md"
+        return DOCS_ROOT / fn
+    return DOCS_ROOT / rel_path / fn
 
 
 def symlink_path(repo: Path, rel_path: str) -> Path:
+    fn = get_doc_filename()
     if rel_path == "":
-        return repo / "CLAUDE.md"
-    return repo / rel_path / "CLAUDE.md"
+        return repo / fn
+    return repo / rel_path / fn
 
 
 def schema_paths(schema: dict) -> list[str]:
@@ -274,7 +267,7 @@ def commit_is_ancestor(repo: Path, commit: str) -> bool:
 
 # ── Metadata footer ──────────────────────────────────────────────────────────
 
-_METADATA_MARKER = "<!-- claude-wiki-meta"
+_METADATA_MARKER = "<!-- agent-wiki-meta"
 _METADATA_END = "-->"
 
 
@@ -312,7 +305,7 @@ def strip_metadata_footer(content: str) -> str:
 
 
 def read_metadata_footer(doc: Path) -> dict:
-    """Return key→value pairs from the claude-wiki-meta footer, or {}."""
+    """Return key→value pairs from the agent-wiki-meta footer, or {}."""
     if not doc.exists():
         return {}
     content = doc.read_text()
@@ -340,7 +333,8 @@ def write_metadata_footer(doc: Path, rel_path: str, touched_by: str,
         existing = read_metadata_footer(doc)
         source_commit = existing.get("SourceCommitID")
     content = strip_metadata_footer(content)
-    location = f"{rel_path}/CLAUDE.md" if rel_path else "CLAUDE.md"
+    fn = get_doc_filename()
+    location = f"{rel_path}/{fn}" if rel_path else fn
     wiki_commit = get_wiki_commit_id()
     lines = [
         _METADATA_MARKER,
@@ -425,7 +419,8 @@ def clear_drift_log_for(processed_rel_paths: list[str]):
     if not DRIFT_LOG.exists():
         return
     def _display(rp: str) -> str:
-        return f"docs/{rp}/CLAUDE.md" if rp else "docs/CLAUDE.md"
+        fn = get_doc_filename()
+        return f"docs/{rp}/{fn}" if rp else f"docs/{fn}"
     keep_docs = {_display(rp) for rp in processed_rel_paths}
     remaining = [e for e in load_drift_log() if e.get("wiki_doc") not in keep_docs]
     DRIFT_LOG.write_text("".join(json.dumps(e) + "\n" for e in remaining))

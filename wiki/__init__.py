@@ -1,3 +1,3 @@
-"""claude-wiki — documentation wiki manager for Claude Code CLAUDE.md files."""
+"""agent-wiki — documentation wiki manager for LLM agents."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

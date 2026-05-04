@@ -1,12 +1,12 @@
-# claude-wiki — Quick Reference
+# agent-wiki — Quick Reference
 
 ## Install
 
 ```bash
-pipx install git+https://github.com/<you>/claude-wiki.git
+pipx install git+https://github.com/<you>/agent-wiki.git
 
 # From a local clone (or to update):
-pipx install /path/to/claude-wiki --force
+pipx install /path/to/agent-wiki --force
 ```
 
 ## Quickstart
@@ -14,9 +14,9 @@ pipx install /path/to/claude-wiki --force
 ```bash
 mkdir my-project-wiki && cd my-project-wiki
 git init
-claude-wiki init --repo-path /path/to/repo
+agent-wiki init --repo-path /path/to/repo
 # Edit schema.yaml to promote paths to doc nodes (append +), then:
-claude-wiki push    # creates placeholder docs + symlinks
+agent-wiki push    # creates placeholder docs + symlinks
 ```
 
 ## Create a new doc
@@ -29,10 +29,10 @@ claude-wiki push    # creates placeholder docs + symlinks
 
 | Command | What it does |
 |---------|-------------|
-| `init --repo-path <path>` | One-time setup: save config, absorb existing CLAUDE.md files, create docs + symlinks, install hooks. Use `--no-detect-target-docs` or `--no-hooks` to skip steps. |
-| `hook-setup` | Drop `.claude-wiki/` wrapper + install git hooks in the target repo. Called by init; run manually to re-install or adjust flags. |
+| `init --repo-path <path>` | One-time setup: save config, absorb existing doc files, create docs + symlinks, install hooks. Use `--doc-filename`, `--no-detect-target-docs`, or `--no-hooks` to adjust. |
+| `hook-setup` | Drop `.agent-wiki/` wrapper + install git hooks in the target repo. Called by init; run manually to re-install or adjust flags. |
 | `push` | Reconcile schema ↔ docs ↔ symlinks. Logs new entries to new-entry.jsonl. |
-| `pull` | Scan target repo for unmanaged CLAUDE.md files and absorb them into the wiki. |
+| `pull` | Scan target repo for unmanaged doc files and absorb them into the wiki. |
 | `detect-drift [--staged]` | Log changed source files to drift.jsonl. Called automatically by the pre-commit hook. |
 | `status [--scope X]` | Show pending drift statistics — which docs need attention and why. |
 | `eject [--scope X]` | Copy docs back into the target repo as real files, remove symlinks — wiki stops tracking those paths. |
@@ -42,8 +42,8 @@ claude-wiki push    # creates placeholder docs + symlinks
 Run `status` to see which docs are behind their source files:
 
 ```bash
-claude-wiki status           # drift + new-entry logs
-claude-wiki status --scope diff    # scope to current changes only
+agent-wiki status           # drift + new-entry logs
+agent-wiki status --scope diff    # scope to current changes only
 ```
 
 Each line shows a doc, why it's flagged (`drift` / `new-file`), and how many source files changed under it. For each flagged doc:
@@ -55,13 +55,13 @@ Each line shows a doc, why it's flagged (`drift` / `new-file`), and how many sou
 
 When done: `clear-flags --flag drift_detected` stamps `SourceCommitID=HEAD` on each drifted doc, resetting the baseline.
 
-Full step-by-step update guide: `.claude-wiki/agents/WIKI_UPDATE.md`
+Full step-by-step update guide: `.agent-wiki/agents/WIKI_UPDATE.md`
 
 ## Running from the target repo
 
 After `hook-setup`, use the wrapper dropped in the target repo:
 
 ```bash
-.claude-wiki/wiki push
-.claude-wiki/wiki status
+.agent-wiki/wiki push
+.agent-wiki/wiki status
 ```

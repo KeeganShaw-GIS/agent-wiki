@@ -2,20 +2,20 @@
 
 ## When to update
 
-Check `.claude-wiki/flags.json` before any doc work.
+Check `.agent-wiki/flags.json` before any doc work.
 
 - `drift_detected` — source files changed since the doc was last reviewed; see `drift.jsonl`
 - `new_entry` — a placeholder doc exists with no real content; see `new-entry.jsonl`
 
-Run `.claude-wiki/wiki status` for a summary of which docs are affected and how many files changed under each.
+Run `.agent-wiki/wiki status` for a summary of which docs are affected and how many files changed under each.
 
 ## How to detect drift for a specific doc
 
 Each managed doc has a metadata footer at the bottom:
 
 ```
-<!-- claude-wiki-meta
-Location: src/payments/CLAUDE.md
+<!-- agent-wiki-meta
+Location: src/payments/AGENTS.md
 SourceCommitID: def5678
 -->
 ```
@@ -35,27 +35,27 @@ The `drift.jsonl` log pre-computes this for you — each entry includes `from_co
 
 ## How to update a doc
 
-1. **Read the current doc** at the symlink path (e.g. `src/payments/CLAUDE.md`) or at `docs/<path>/CLAUDE.md` in the wiki. They are the same file.
+1. **Read the current doc** at the symlink path (e.g. `src/payments/AGENTS.md`) or at `docs/<path>/<doc>` in the wiki. They are the same file.
 
 2. **Run the git diff** for this doc's path using the commit range from the footer or `drift.jsonl`. Read the changed files and identify what actually changed.
 
 3. **Ask: does anything in the doc need to change?** See "What to look for" below. If nothing changed that affects the doc — stop here and just clear the flag.
 
-4. **Check the template** at `.claude-wiki/CLAUDE.template.md` — every doc must follow this structure.
+4. **Check the template** at `.agent-wiki/AGENT.template.md` — every doc must follow this structure.
 
-5. **Check the house rules** at `.claude-wiki/instructions.md` for project-specific writing conventions.
+5. **Check the house rules** at `.agent-wiki/instructions.md` for project-specific writing conventions.
 
 6. **Edit the doc directly** via the symlink. Changes are immediately live in the wiki. Follow these rules:
    - Write for an LLM agent, not a human reader. Be terse.
    - No padding, no filler. Omit anything self-evident from well-named code.
    - Prefer present tense, active voice, concrete nouns.
    - Document anything novel, proprietary, or non-obvious.
-   - Do not duplicate content from ancestor CLAUDE.md files — they own their scope.
-   - Do not edit or remove the `<!-- claude-wiki-meta` block at the bottom.
+   - Do not duplicate content from ancestor doc files — they own their scope.
+   - Do not edit or remove the `<!-- agent-wiki-meta` block at the bottom.
 
 7. **Clear the flag** when all drifted docs are resolved:
    ```
-   .claude-wiki/wiki clear-flags --flag drift_detected
+   .agent-wiki/wiki clear-flags --flag drift_detected
    ```
    This stamps `SourceCommitID = HEAD` on every doc that had drift, resetting the baseline. `clear-flags` auto-clears a flag if its backing log is already empty.
 
@@ -89,7 +89,7 @@ After a full review, clear the flag normally — `clear-flags` will stamp `Sourc
 
 ## Doc placement rules
 
-- A CLAUDE.md covers only code **at or below** its path.
+- Each doc covers only code **at or below** its path.
 - Place content at the **highest level where it still applies exclusively**.
 - Parent docs cover: repo layout, tech stack, global conventions, shared interfaces.
 - Sub-docs cover module-specific detail; do not repeat what a parent already states.

@@ -2,7 +2,7 @@
 
 ## When a conflict exists
 
-Check `.claude-wiki/flags.json`. If `multiple_versions` is set, both a wiki-managed doc and
+Check `.agent-wiki/flags.json`. If `multiple_versions` is set, both a wiki-managed doc and
 an unmanaged real file exist at the same path in the target repo.
 
 Read `logs/conflict.jsonl` to find the affected paths. Each entry contains:
@@ -21,7 +21,7 @@ repo roots) to understand:
 
 **Step 2 — Evaluate template adherence**
 
-Open `.claude-wiki/CLAUDE.template.md`. Compare both versions against it:
+Open `.agent-wiki/AGENT.template.md`. Compare both versions against it:
 - Which version more closely follows the required structure?
 - Which follows the quality rules (terse, no filler, agent-focused)?
 
@@ -33,7 +33,7 @@ The version with stronger template adherence is the **preferred base**.
 - Incorporate unique, non-redundant concepts from the other version.
 - Resolve contradictions in favor of the more recent or more specific information.
 - Do not duplicate content. Do not add padding.
-- Preserve the `<!-- claude-wiki-meta` block at the bottom exactly as-is.
+- Preserve the `<!-- agent-wiki-meta` block at the bottom exactly as-is.
 
 Write the merged result to the **wiki doc** path (not the repo file).
 
@@ -42,14 +42,14 @@ Write the merged result to the **wiki doc** path (not the repo file).
 Once the wiki doc contains the merged content, replace the unmanaged repo file:
 ```bash
 rm <repo_file>
-.claude-wiki/wiki push --verify
+.agent-wiki/wiki push --verify
 ```
 `push --verify` recreates the symlink from the wiki doc to the repo path.
 
 **Step 5 — Clear the flag**
 
 ```bash
-.claude-wiki/wiki clear-flags --flag multiple_versions
+.agent-wiki/wiki clear-flags --flag multiple_versions
 ```
 `clear-flags` auto-clears `multiple_versions` if `conflict.jsonl` is now empty.
 

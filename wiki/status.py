@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from .lib import (
-    ancestor_paths, best_schema_match, doc_path, get_repo_path,
+    ancestor_paths, best_schema_match, doc_path, get_doc_filename, get_repo_path,
     load_drift_log, load_new_entry_log, load_schema, resolve_scope, schema_paths,
 )
 
@@ -21,7 +21,7 @@ def _scan_dir_files(repo: Path, rel_path: str) -> list[str]:
     return [
         str(f.relative_to(repo))
         for f in sorted(target.rglob("*"))
-        if f.is_file() and ".git" not in f.parts and f.name != "CLAUDE.md"
+        if f.is_file() and ".git" not in f.parts and f.name != get_doc_filename()
     ]
 
 
@@ -79,7 +79,8 @@ def run_status(scope=None):
     print(f"  scope:  {scope_label}\n")
     for rel_path in all_rel_paths:
         dp = doc_path(rel_path)
-        display = f"docs/{rel_path}/CLAUDE.md" if rel_path else "docs/CLAUDE.md"
+        fn = get_doc_filename()
+        display = f"docs/{rel_path}/{fn}" if rel_path else f"docs/{fn}"
         if rel_path in new_entry_rel_paths:
             kind = "new-file"
         elif scope is None:
@@ -91,8 +92,9 @@ def run_status(scope=None):
         if not scoped and (is_new or rel_path in new_entry_rel_paths):
             scoped = _scan_dir_files(repo, rel_path)
         print(f"  {display:<50}  [{kind}]  {len(scoped)} source file(s)")
+        fn = get_doc_filename()
         existing_ancestors = [
-            f"docs/{anc}/CLAUDE.md" if anc else "docs/CLAUDE.md"
+            f"docs/{anc}/{fn}" if anc else f"docs/{fn}"
             for anc in ancestor_paths(rel_path, s_paths)
             if doc_path(anc).exists() and not _is_placeholder(doc_path(anc))
         ]

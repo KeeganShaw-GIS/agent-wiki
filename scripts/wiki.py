@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shim — kept for backward compatibility with existing git hooks.
 
-Prefer using the `claude-wiki` CLI after installing the package:
+Prefer using the `agent-wiki` CLI after installing the package:
   pip install -e /path/to/chatbox-wiki
 """
 import sys

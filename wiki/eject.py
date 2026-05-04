@@ -42,7 +42,9 @@ def run_eject(scope: str | None = None):
     for rel_path, _ in nodes:
         link = symlink_path(repo, rel_path)
         wiki_doc = doc_path(rel_path)
-        display = f"docs/{rel_path}/CLAUDE.md" if rel_path else "docs/CLAUDE.md"
+        from .lib import get_doc_filename
+        fn = get_doc_filename()
+        display = f"docs/{rel_path}/{fn}" if rel_path else f"docs/{fn}"
 
         if not link.is_symlink():
             print(f"  [skip]     {link.relative_to(repo)}  (not a symlink)")
@@ -82,16 +84,16 @@ def _backup_docs():
 
 
 def _remove_wiki_integration(repo: Path):
-    # .claude-wiki/ folder
-    cw_dir = repo / ".claude-wiki"
+    # .agent-wiki/ folder
+    cw_dir = repo / ".agent-wiki"
     if cw_dir.exists():
         shutil.rmtree(cw_dir)
-        print(f"  [removed]  .claude-wiki/")
+        print(f"  [removed]  .agent-wiki/")
 
-    # Git hooks owned by claude-wiki
+    # Git hooks owned by agent-wiki
     for hook_name in ("pre-commit", "post-checkout"):
         hook = repo / ".git" / "hooks" / hook_name
-        if hook.exists() and "claude-wiki" in hook.read_text():
-            bak = hook.with_suffix(".claude-wiki.bak")
+        if hook.exists() and "agent-wiki" in hook.read_text():
+            bak = hook.with_suffix(".agent-wiki.bak")
             hook.rename(bak)
             print(f"  [backup]   .git/hooks/{hook_name} → {bak.name}")

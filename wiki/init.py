@@ -59,10 +59,29 @@ def _ensure_instruction_file(path: Path, default: str, label: str):
         print(f"  [exists]   {label}  (skipped — already customized)")
 
 
+def _prompt_doc_filename() -> str:
+    print("\nWhich doc filename does your LLM agent use?")
+    print("  1) CLAUDE.md  — Anthropic Claude Code")
+    print("  2) AGENTS.md  — OpenAI Codex agents")
+    print("  3) Custom")
+    choice = input("Choice [1]: ").strip() or "1"
+    if choice == "1":
+        return "CLAUDE.md"
+    if choice == "2":
+        return "AGENTS.md"
+    if choice == "3":
+        name = input("Filename (e.g. GEMINI.md): ").strip()
+        if not name:
+            return "CLAUDE.md"
+        return name
+    return "CLAUDE.md"
+
+
 def run_init(
     repo_path: str,
     no_detect_target_docs: bool = False,
     no_hooks: bool = False,
+    doc_filename: str | None = None,
 ):
     from .hook_setup import run_hook_setup
     from .lib import load_new_entry_log
@@ -73,13 +92,17 @@ def run_init(
     if not (repo / ".git").exists():
         raise SystemExit(f"Not a git repo: {repo}")
 
+    if doc_filename is None:
+        doc_filename = _prompt_doc_filename()
+
     config = {
         "repo_path": str(repo),
         "repo_name": repo.name,
         "skip_worktree": True,
+        "doc_filename": doc_filename,
     }
     save_config(config)
-    print(f"Initialized wiki for {repo.name} at {repo}\n")
+    print(f"\nInitialized wiki for {repo.name} at {repo}  (doc: {doc_filename})\n")
 
     _ensure_wiki_instructions()
     _ensure_llm_md()

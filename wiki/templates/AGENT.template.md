@@ -1,10 +1,7 @@
 # {path}
 
-> **Not yet populated.** This file was created automatically by `claude-wiki check-paths`.
->
-> To populate it, either:
-> - **Generate with LLM:** `claude-wiki validate --scope {path}`
-> - **Fill out manually** using the sections below.
+> **Not yet populated.** This file was created automatically by `agent-wiki push`.
+> Fill it out manually using the sections below.
 
 ## Purpose
 
