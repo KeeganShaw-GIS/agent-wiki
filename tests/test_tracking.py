@@ -67,6 +67,48 @@ class TestUntrackPath:
         assert real_file.exists()
         assert not real_file.is_symlink()
 
+    def test_untrack_strips_wiki_banner(self, wiki_setup):
+        """Untracked file must not contain the WIKI MANAGED banner."""
+        wiki, repo = wiki_setup
+        write_schema(wiki, "root+:\n  src~:\n  frontend+:\n    components+:\n")
+        run_wiki(wiki, ["push"])
+
+        content = (repo / "src" / "CLAUDE.md").read_text()
+        assert "WIKI MANAGED" not in content
+        assert "> **WIKI MANAGED**" not in content
+
+    def test_untrack_strips_metadata_footer(self, wiki_setup):
+        """Untracked file must not contain the agent-wiki-meta footer."""
+        wiki, repo = wiki_setup
+        write_schema(wiki, "root+:\n  src~:\n  frontend+:\n    components+:\n")
+        run_wiki(wiki, ["push"])
+
+        content = (repo / "src" / "CLAUDE.md").read_text()
+        assert "agent-wiki-meta" not in content
+
+    def test_untrack_removes_agent_wiki_mirror(self, wiki_setup):
+        """The .agent-wiki/symlinks/src.md mirror symlink is removed on untrack."""
+        wiki, repo = wiki_setup
+        mirror = repo / ".agent-wiki" / "symlinks" / "src.md"
+        assert mirror.exists() or mirror.is_symlink()
+
+        write_schema(wiki, "root+:\n  src~:\n  frontend+:\n    components+:\n")
+        run_wiki(wiki, ["push"])
+
+        assert not mirror.exists()
+        assert not mirror.is_symlink()
+
+    def test_untrack_removes_nested_symlinks(self, wiki_setup):
+        """Untracking a parent removes symlinks for all ~ children too."""
+        wiki, repo = wiki_setup
+        assert is_valid_symlink(repo / "frontend" / "components" / "CLAUDE.md")
+
+        write_schema(wiki, "root+:\n  src+:\n  frontend~:\n    components~:\n")
+        run_wiki(wiki, ["push"])
+
+        assert not (repo / "frontend" / "CLAUDE.md").is_symlink()
+        assert not (repo / "frontend" / "components" / "CLAUDE.md").is_symlink()
+
     def test_untrack_does_not_affect_other_paths(self, wiki_setup):
         wiki, repo = wiki_setup
         write_schema(wiki, "root+:\n  src~:\n  frontend+:\n    components+:\n")

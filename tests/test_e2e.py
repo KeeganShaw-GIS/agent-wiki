@@ -39,6 +39,7 @@ class TestHappyPath:
         run_wiki(wiki, ["push"])
 
         assert not (repo / "frontend" / "CLAUDE.md").is_symlink()
+        assert not (repo / "frontend" / "components" / "CLAUDE.md").is_symlink()
 
         # 4. Add a new tracked path — push logs it as a new entry
         (repo / "services").mkdir()

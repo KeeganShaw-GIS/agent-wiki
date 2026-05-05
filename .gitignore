@@ -30,6 +30,7 @@ ENV/
 
 # Testing
 .pytest_cache/
+.test_artifacts/
 .coverage
 htmlcov/
 

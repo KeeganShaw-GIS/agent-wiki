@@ -136,6 +136,8 @@ def untracked_paths(schema: dict, prefix: str = "") -> list[str]:
         path = "" if segment == "root" else (f"{prefix}/{segment}" if prefix else segment)
         if suffix == "~":
             results.append(path)
+            if isinstance(value, dict) and value:
+                results.extend(untracked_paths(value, path))
         elif isinstance(value, dict) and value:
             results.extend(untracked_paths(value, path))
     return results

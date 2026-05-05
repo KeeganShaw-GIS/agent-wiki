@@ -23,4 +23,6 @@ include = ["wiki*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--basetemp=.test_artifacts"
+tmp_path_retention_policy = "all"
 

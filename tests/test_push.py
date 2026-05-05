@@ -41,13 +41,17 @@ class TestPushSymlinks:
         index = repo / ".agent-wiki" / "AGENT-INDEX.md"
         assert index.exists()
         content = index.read_text()
-        assert "CLAUDE.md" in content
-        assert "src" in content
+        # Paths must be relative to .agent-wiki/ (no leading .agent-wiki/)
+        assert "symlinks/src.md" in content
+        assert ".agent-wiki/symlinks" not in content
+        assert "agents/llm.md" in content
+        assert ".agent-wiki/agents" not in content
 
     def test_creates_mirror_symlinks_in_agent_wiki(self, wiki_setup):
         wiki, repo = wiki_setup
-        assert is_valid_symlink(repo / ".agent-wiki" / "src" / "CLAUDE.md")
-        assert is_valid_symlink(repo / ".agent-wiki" / "frontend" / "CLAUDE.md")
+        assert is_valid_symlink(repo / ".agent-wiki" / "symlinks" / "src.md")
+        assert is_valid_symlink(repo / ".agent-wiki" / "symlinks" / "frontend.md")
+        assert is_valid_symlink(repo / ".agent-wiki" / "symlinks" / "frontend-components.md")
 
 
 class TestPushVerify:

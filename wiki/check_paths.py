@@ -111,9 +111,9 @@ def _generate_agent_index(schema: dict, repo: Path, nodes: list, quiet: bool = F
                 path = f"{prefix}/{seg}" if prefix else seg
             pad = "  " * indent
             if raw_key.endswith("+"):
-                link_path = fn if path == "" else f"{path}/{fn}"
+                flat = _mirror_flat_name(path)
                 label = "Root" if path == "" else seg
-                lines.append(f"{pad}- [{label}]({link_path})")
+                lines.append(f"{pad}- [{label}](symlinks/{flat})")
             if isinstance(children, dict) and children:
                 lines.extend(_tree_lines(children, path, indent + (1 if raw_key.endswith("+") else 0)))
         return lines
@@ -126,11 +126,11 @@ def _generate_agent_index(schema: dict, repo: Path, nodes: list, quiet: bool = F
         f"## Documentation Tree\n\n"
         f"{tree}\n\n"
         f"## Agent Resources\n\n"
-        f"- [Wiki Reference](.agent-wiki/agents/llm.md)\n"
-        f"- [Update Guide](.agent-wiki/agents/WIKI_UPDATE.md)\n"
-        f"- [Merge Guide](.agent-wiki/agents/WIKI_MERGE.md)\n\n"
+        f"- [Wiki Reference](agents/llm.md)\n"
+        f"- [Update Guide](agents/WIKI_UPDATE.md)\n"
+        f"- [Merge Guide](agents/WIKI_MERGE.md)\n\n"
         f"## Status\n\n"
-        f"Check `.agent-wiki/flags.json` before starting doc work.\n"
+        f"Check `flags.json` before starting doc work.\n"
     )
 
     index_path = repo / ".agent-wiki" / AGENT_INDEX_FILENAME
@@ -140,23 +140,31 @@ def _generate_agent_index(schema: dict, repo: Path, nodes: list, quiet: bool = F
         print(f"  [index]    .agent-wiki/{AGENT_INDEX_FILENAME}")
 
 
+def _mirror_flat_name(rel_path: str) -> str:
+    """Flat symlink name for a doc path: '' → 'root.md', 'frontend/components' → 'frontend-components.md'."""
+    ext = Path(get_doc_filename()).suffix or ".md"
+    return ("root" if not rel_path else rel_path.replace("/", "-")) + ext
+
+
 def _create_mirror_symlinks(nodes: list, repo: Path, quiet: bool = False):
-    """Create .agent-wiki/<rel_path>/<doc_filename> symlinks mirroring the doc tree."""
-    fn = get_doc_filename()
-    aw_dir = repo / ".agent-wiki"
+    """Rebuild .agent-wiki/symlinks/ as a flat directory of named doc symlinks."""
+    symlinks_dir = repo / ".agent-wiki" / "symlinks"
+
+    # Wipe and recreate so stale entries never accumulate
+    if symlinks_dir.exists():
+        shutil.rmtree(symlinks_dir)
+    symlinks_dir.mkdir(parents=True)
+
     for rel_path, _ in nodes:
         wiki_doc = doc_path(rel_path)
         if not wiki_doc.exists():
             continue
-        mirror = aw_dir / rel_path / fn if rel_path else aw_dir / fn
-        mirror.parent.mkdir(parents=True, exist_ok=True)
-        if mirror.is_symlink():
-            mirror.unlink()
-        rel = os.path.relpath(wiki_doc, mirror.parent)
+        name = _mirror_flat_name(rel_path)
+        mirror = symlinks_dir / name
+        rel = os.path.relpath(wiki_doc, symlinks_dir)
         mirror.symlink_to(rel)
         if not quiet:
-            disp = f".agent-wiki/{rel_path}/{fn}" if rel_path else f".agent-wiki/{fn}"
-            print(f"  [mirror]   {disp} -> {rel}")
+            print(f"  [mirror]   .agent-wiki/symlinks/{name} -> {rel}")
 
 
 def run_push_docs(detect_target_docs: bool = False, verify: bool = False, quiet: bool = False) -> dict:
@@ -276,10 +284,25 @@ def _verify_symlinks(nodes: list, repo: Path):
         )
 
 
+def _strip_wiki_metadata(content: str) -> str:
+    """Remove the wiki-managed banner and metadata footer from doc content."""
+    if content.startswith(_WIKI_BANNER):
+        content = content[len(_WIKI_BANNER):]
+    marker = "<!-- agent-wiki-meta"
+    start = content.rfind(marker)
+    if start != -1:
+        end = content.find("-->", start)
+        if end != -1:
+            content = content[:start].rstrip() + "\n"
+    return content
+
+
 def _handle_untracked(schema: dict, repo: Path, quiet: bool = False):
     paths = untracked_paths(schema)
     if not paths:
         return
+    fn = get_doc_filename()
+    aw_dir = repo / ".agent-wiki"
     for rel_path in paths:
         wiki_doc = doc_path(rel_path)
         link = symlink_path(repo, rel_path)
@@ -289,10 +312,17 @@ def _handle_untracked(schema: dict, repo: Path, quiet: bool = False):
                 print(f"  [untracked] removed symlink {link.relative_to(repo)}")
         if wiki_doc.exists():
             link.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(wiki_doc, link)
+            clean = _strip_wiki_metadata(wiki_doc.read_text())
+            link.write_text(clean)
             wiki_doc.unlink()
             if not quiet:
                 print(f"  [untracked] moved wiki doc → {link.relative_to(repo)}")
+        # Remove the flat mirror symlink from .agent-wiki/symlinks/
+        mirror = aw_dir / "symlinks" / _mirror_flat_name(rel_path)
+        if mirror.is_symlink():
+            mirror.unlink()
+            if not quiet:
+                print(f"  [untracked] removed mirror .agent-wiki/symlinks/{mirror.name}")
 
 
 def run_pull_docs(quiet: bool = False, strategy: str = "skip") -> tuple[int, list[str]]:
