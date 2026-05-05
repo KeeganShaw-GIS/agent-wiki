@@ -1,43 +1,5 @@
-# wiki-specific
-config.json
+/target
+**/*.rs.bk
 .DS_Store
-logs/
-
-# Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[codz]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-build/
-dist/
-*.egg-info/
-*.egg
-MANIFEST
-.eggs/
-*.spec
-
-# Environments
-.env
-.envrc
-.venv
-env/
-venv/
-ENV/
-
-# Testing
-.pytest_cache/
-.test_artifacts/
-.coverage
-htmlcov/
-
-# Type checkers
-.mypy_cache/
-.pyre/
-.pytype/
-
-# Ruff
-.ruff_cache/
+*.py[cod]

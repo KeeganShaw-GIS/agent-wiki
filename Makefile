@@ -1,12 +1,15 @@
-.PHONY: build clean install
+.PHONY: build test install clean
 
 build:
-	pyinstaller --onefile --name agent-wiki main.py
-	@echo "Binary: dist/agent-wiki"
+	cargo build --release
+	@echo "Binary: target/release/agent-wiki"
 
-clean:
-	rm -rf dist/ build/ agent-wiki.spec
+test:
+	cargo test
 
 install: build
-	cp dist/agent-wiki /usr/local/bin/agent-wiki
+	cp target/release/agent-wiki /usr/local/bin/agent-wiki
 	@echo "Installed to /usr/local/bin/agent-wiki"
+
+clean:
+	cargo clean

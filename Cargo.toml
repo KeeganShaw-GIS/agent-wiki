@@ -1,0 +1,25 @@
+[package]
+name = "agent-wiki"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "agent-wiki"
+path = "src/main.rs"
+
+[lib]
+name = "agent_wiki"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+walkdir = "2"
+anyhow = "1"
+chrono = "0.4"
+indexmap = { version = "2", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3"
