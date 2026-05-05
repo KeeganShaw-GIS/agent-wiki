@@ -4,7 +4,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from .lib import (
-    CONFIG_FILE, INSTRUCTIONS_FILE, SCHEMA_FILE, WIKI_ROOT,
+    CONFIG_FILE, FLAGS_FILE, INSTRUCTIONS_FILE, SCHEMA_FILE, WIKI_ROOT,
     WIKI_MERGE_FILE, WIKI_UPDATE_FILE,
     save_config, save_schema,
 )
@@ -111,6 +111,11 @@ def run_init(
     }
     save_config(config)
     print(f"\nInitialized wiki for {repo.name} at {repo}  (doc: {doc_filename})\n")
+
+    if not FLAGS_FILE.exists():
+        FLAGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        FLAGS_FILE.write_text("{}\n")
+        print("  [created]  logs/flags.json")
 
     _ensure_wiki_instructions()
     _ensure_llm_md()

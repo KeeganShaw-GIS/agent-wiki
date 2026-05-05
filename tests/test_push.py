@@ -29,12 +29,11 @@ class TestPushSymlinks:
         content = (wiki / "docs" / "src" / "CLAUDE.md").read_text()
         assert "Not yet populated" in content
 
-    def test_root_symlink_points_to_agent_index(self, wiki_setup):
+    def test_root_symlink_points_to_wiki_doc(self, wiki_setup):
         wiki, repo = wiki_setup
         root_link = repo / "CLAUDE.md"
         assert root_link.is_symlink()
-        index = repo / ".agent-wiki" / "AGENT-INDEX.md"
-        assert root_link.resolve() == index.resolve()
+        assert root_link.resolve() == (wiki / "docs" / "CLAUDE.md").resolve()
 
     def test_creates_agent_index(self, wiki_setup):
         wiki, repo = wiki_setup
@@ -86,6 +85,42 @@ class TestPushVerify:
 
         run_wiki(wiki, ["push", "--verify"])
         assert is_valid_symlink(link)
+
+
+class TestVerifyOrphanEject:
+    def test_verify_ejects_orphaned_symlink(self, wiki_setup):
+        """push --verify removes symlinks with WIKI MANAGED banner not in schema."""
+        wiki, repo = wiki_setup
+
+        # Create a directory with a managed symlink outside the schema
+        (repo / "orphan").mkdir()
+        orphan_wiki_doc = wiki / "docs" / "orphan" / "CLAUDE.md"
+        orphan_wiki_doc.parent.mkdir(parents=True, exist_ok=True)
+        orphan_wiki_doc.write_text("> **WIKI MANAGED** — orphan\n\n---\n\n# Orphan\n")
+        orphan_link = repo / "orphan" / "CLAUDE.md"
+        import os
+        orphan_link.symlink_to(os.path.relpath(orphan_wiki_doc, orphan_link.parent))
+
+        run_wiki(wiki, ["push", "--verify"])
+
+        # Symlink replaced with real file, banner stripped
+        assert orphan_link.exists()
+        assert not orphan_link.is_symlink()
+        assert "WIKI MANAGED" not in orphan_link.read_text()
+
+    def test_verify_strips_banner_from_orphaned_real_file(self, wiki_setup):
+        """push --verify strips WIKI MANAGED banner from a real file not in schema."""
+        wiki, repo = wiki_setup
+
+        (repo / "legacy").mkdir()
+        legacy = repo / "legacy" / "CLAUDE.md"
+        legacy.write_text("> **WIKI MANAGED** — This file is a symlink\n\n---\n\n# Legacy\n")
+
+        run_wiki(wiki, ["push", "--verify"])
+
+        assert legacy.exists()
+        assert "WIKI MANAGED" not in legacy.read_text()
+        assert "# Legacy" in legacy.read_text()
 
 
 class TestPushNewEntry:

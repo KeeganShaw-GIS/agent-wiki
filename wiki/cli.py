@@ -168,8 +168,8 @@ def main():
     p_pull = sub.add_parser("pull",
                             help="Scan target repo for unmanaged doc files and absorb them")
     p_pull.add_argument(
-        "--strategy", choices=["skip", "wiki", "repo"], default="skip",
-        help="Conflict resolution: skip (default, flag both), wiki (keep wiki), repo (keep repo doc)",
+        "--strategy", choices=["skip", "wiki", "repo"], default="repo",
+        help="Conflict resolution: repo (default, repo wins + backup wiki), wiki (keep wiki), skip (flag both)",
     )
 
     p_hs = sub.add_parser("hook-setup",

@@ -47,6 +47,56 @@ class TestPullAbsorb:
 
         assert "api+" in (wiki / "schema.yaml").read_text()
 
+    def test_pull_strips_stale_banner_from_copied_doc(self, wiki_setup):
+        """A real file with a WIKI MANAGED banner referencing a different path gets
+        the banner stripped and re-absorbed with a fresh footer for its actual path."""
+        wiki, repo = wiki_setup
+
+        # Simulate copy-paste: file at api/ has a banner claiming it lives at src/
+        (repo / "api").mkdir(exist_ok=True)
+        (repo / "api" / "CLAUDE.md").write_text(
+            "> **WIKI MANAGED** — This file is a symlink; edits here edit the wiki directly.\n"
+            "> Check `.agent-wiki/flags.json` before any doc work.\n\n"
+            "---\n\n"
+            "# API\nPasted from src.\n"
+            "<!-- agent-wiki-meta\n"
+            "Location: src/CLAUDE.md\n"
+            "SourceCommitID: abc123\n"
+            "-->\n"
+        )
+
+        run_wiki(wiki, ["pull"])
+
+        wiki_doc = wiki / "docs" / "api" / "CLAUDE.md"
+        content = wiki_doc.read_text()
+        # Banner stripped — Location from old doc not present in body
+        assert "src/CLAUDE.md" not in content
+        # Content preserved
+        assert "Pasted from src" in content
+        # Fresh footer written for actual path
+        from utils import read_footer
+        footer = read_footer(wiki_doc)
+        assert footer.get("Location", "").endswith("api/CLAUDE.md")
+
+    def test_pull_strips_banner_even_when_location_matches(self, wiki_setup):
+        """Banner is always stripped on pull — even if Location is correct.
+        The wiki rewrites a fresh authoritative footer."""
+        wiki, repo = wiki_setup
+        (repo / "src" / "CLAUDE.md").unlink()
+        (repo / "src" / "CLAUDE.md").write_text(
+            "> **WIKI MANAGED** — This file is a symlink; edits here edit the wiki directly.\n\n"
+            "---\n\n"
+            "# Src content\n"
+            "<!-- agent-wiki-meta\nLocation: src/CLAUDE.md\n-->\n"
+        )
+
+        run_wiki(wiki, ["pull"])
+
+        content = (wiki / "docs" / "src" / "CLAUDE.md").read_text()
+        assert "# Src content" in content
+        # Only one banner block (the fresh one written by pull)
+        assert content.count("<!-- agent-wiki-meta") == 1
+
     def test_no_unmanaged_docs_prints_nothing_found(self, wiki_setup):
         wiki, repo = wiki_setup
         result = run_wiki(wiki, ["pull"])
@@ -66,13 +116,37 @@ class TestPullAbsorb:
 
 
 class TestPullConflicts:
+    def test_default_pull_repo_wins(self, wiki_setup):
+        """Default pull (repo wins) absorbs repo file and sets multiple_versions flag."""
+        wiki, repo = wiki_setup
+        (repo / "src" / "CLAUDE.md").unlink()
+        (repo / "src" / "CLAUDE.md").write_text("# Repo Edit\n")
+
+        run_wiki(wiki, ["pull"])
+
+        assert "Repo Edit" in (wiki / "docs" / "src" / "CLAUDE.md").read_text()
+        assert is_valid_symlink(repo / "src" / "CLAUDE.md")
+        assert read_flags(wiki).get("multiple_versions") is True
+
+    def test_default_pull_backs_up_old_wiki_version(self, wiki_setup):
+        """Default pull saves previous wiki content to logs/local-edits/."""
+        wiki, repo = wiki_setup
+        original = (wiki / "docs" / "src" / "CLAUDE.md").read_text()
+        (repo / "src" / "CLAUDE.md").unlink()
+        (repo / "src" / "CLAUDE.md").write_text("# Repo Edit\n")
+
+        run_wiki(wiki, ["pull"])
+
+        backup = wiki / "logs" / "local-edits" / "src.md"
+        assert backup.exists()
+        assert backup.read_text() == original
+
     def test_conflict_skip_strategy_sets_flag(self, wiki_setup):
         wiki, repo = wiki_setup
-        # Create a real file where there's already a managed symlink
         (repo / "src" / "CLAUDE.md").unlink()
-        (repo / "src" / "CLAUDE.md").write_text("# Conflicting src\n")
+        (repo / "src" / "CLAUDE.md").write_text("# Conflict\n")
 
-        run_wiki(wiki, ["pull"])  # default: skip
+        run_wiki(wiki, ["pull", "--strategy", "skip"])
 
         assert read_flags(wiki).get("multiple_versions") is True
 
@@ -81,7 +155,7 @@ class TestPullConflicts:
         (repo / "src" / "CLAUDE.md").unlink()
         (repo / "src" / "CLAUDE.md").write_text("# Conflict\n")
 
-        run_wiki(wiki, ["pull"])
+        run_wiki(wiki, ["pull", "--strategy", "skip"])
 
         entries = read_log(wiki, "conflict.jsonl")
         assert any(e["rel_path"] == "src" for e in entries)
@@ -97,21 +171,11 @@ class TestPullConflicts:
         assert (wiki / "docs" / "src" / "CLAUDE.md").read_text() == original
         assert is_valid_symlink(repo / "src" / "CLAUDE.md")
 
-    def test_conflict_repo_strategy_uses_repo_content(self, wiki_setup):
-        wiki, repo = wiki_setup
-        (repo / "src" / "CLAUDE.md").unlink()
-        (repo / "src" / "CLAUDE.md").write_text("# Repo Version\n")
-
-        run_wiki(wiki, ["pull", "--strategy", "repo"])
-
-        assert "Repo Version" in (wiki / "docs" / "src" / "CLAUDE.md").read_text()
-        assert is_valid_symlink(repo / "src" / "CLAUDE.md")
-
     def test_conflict_wiki_strategy_clears_conflict_log(self, wiki_setup):
         wiki, repo = wiki_setup
         (repo / "src" / "CLAUDE.md").unlink()
         (repo / "src" / "CLAUDE.md").write_text("# Conflict\n")
-        run_wiki(wiki, ["pull"])  # creates conflict entry
+        run_wiki(wiki, ["pull", "--strategy", "skip"])
 
         run_wiki(wiki, ["pull", "--strategy", "wiki"])
 

@@ -90,25 +90,52 @@ class TestDriftDetectedFlag:
 
 
 class TestMultipleVersionsFlag:
-    def test_pull_conflict_sets_flag(self, wiki_setup):
+    def test_pull_repo_wins_by_default_and_sets_flag(self, wiki_setup):
+        """Default pull absorbs repo version and sets multiple_versions as audit trail."""
         wiki, repo = wiki_setup
         (repo / "src" / "CLAUDE.md").unlink()
-        (repo / "src" / "CLAUDE.md").write_text("# Conflict\n")
+        (repo / "src" / "CLAUDE.md").write_text("# Edited in repo\n")
 
         run_wiki(wiki, ["pull"])
 
         assert read_flags(wiki).get("multiple_versions") is True
+        # Repo content absorbed into wiki
+        assert "Edited in repo" in (wiki / "docs" / "src" / "CLAUDE.md").read_text()
+        # Old wiki version backed up
+        assert (wiki / "logs" / "local-edits" / "src.md").exists()
 
-    def test_resolving_conflict_clears_flag(self, wiki_setup):
+    def test_pull_repo_wins_restores_symlink(self, wiki_setup):
+        """After repo-wins pull, target path is a symlink again."""
+        wiki, repo = wiki_setup
+        (repo / "src" / "CLAUDE.md").unlink()
+        (repo / "src" / "CLAUDE.md").write_text("# Edited in repo\n")
+
+        run_wiki(wiki, ["pull"])
+
+        from utils import is_valid_symlink
+        assert is_valid_symlink(repo / "src" / "CLAUDE.md")
+
+    def test_pull_skip_strategy_flags_without_absorbing(self, wiki_setup):
+        """--strategy skip flags conflict but leaves both files untouched."""
+        wiki, repo = wiki_setup
+        original_wiki_content = (wiki / "docs" / "src" / "CLAUDE.md").read_text()
+        (repo / "src" / "CLAUDE.md").unlink()
+        (repo / "src" / "CLAUDE.md").write_text("# Conflict\n")
+
+        run_wiki(wiki, ["pull", "--strategy", "skip"])
+
+        assert read_flags(wiki).get("multiple_versions") is True
+        assert (wiki / "docs" / "src" / "CLAUDE.md").read_text() == original_wiki_content
+
+    def test_resolving_conflict_with_wiki_strategy_clears_flag(self, wiki_setup):
         wiki, repo = wiki_setup
         (repo / "src" / "CLAUDE.md").unlink()
         (repo / "src" / "CLAUDE.md").write_text("# Conflict\n")
-        run_wiki(wiki, ["pull"])
+        run_wiki(wiki, ["pull", "--strategy", "skip"])
         assert read_flags(wiki).get("multiple_versions") is True
 
         run_wiki(wiki, ["pull", "--strategy", "wiki"])
 
-        # After resolving, flag should be cleared
         assert not read_flags(wiki).get("multiple_versions")
 
 

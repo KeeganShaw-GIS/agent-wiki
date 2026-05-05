@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 
 from .lib import (
-    AGENT_INDEX_FILENAME, CONFLICT_LOG, DOCS_ROOT, NEW_ENTRY_LOG, TEMPLATE_FILE, WIKI_ROOT,
+    AGENT_INDEX_FILENAME, CONFLICT_LOG, DOCS_ROOT, INSTRUCTIONS_FILE,
+    NEW_ENTRY_LOG, TEMPLATE_FILE, WIKI_ROOT,
     add_to_schema, append_log, clear_conflict_log_for, clear_flag, doc_path,
     get_config_flag, get_doc_filename, get_repo_path, git_head_hash,
     load_conflict_log, load_schema, now_ts,
@@ -43,7 +44,9 @@ def ensure_wiki_doc(rel_path: str, source: str = "manual", quiet: bool = False) 
     dp = doc_path(rel_path)
     if not dp.exists():
         dp.parent.mkdir(parents=True, exist_ok=True)
-        if TEMPLATE_FILE.exists():
+        if rel_path == "" and INSTRUCTIONS_FILE.exists():
+            body = INSTRUCTIONS_FILE.read_text()
+        elif TEMPLATE_FILE.exists():
             body = TEMPLATE_FILE.read_text().replace("{path}", rel_path or "root")
         else:
             from importlib.resources import files as _pkg_files
@@ -182,7 +185,6 @@ def run_push_docs(detect_target_docs: bool = False, verify: bool = False, quiet:
     new_docs = 0
     symlinks = 0
 
-    # Generate AGENT-INDEX.md first (root symlink will point to it)
     _generate_agent_index(schema, repo, nodes, quiet=quiet)
 
     for rel_path, _ in nodes:
@@ -193,18 +195,7 @@ def run_push_docs(detect_target_docs: bool = False, verify: bool = False, quiet:
 
         link = symlink_path(repo, rel_path)
 
-        if rel_path == "":
-            # Root symlink points to AGENT-INDEX.md, not directly to the wiki doc
-            index_path = repo / ".agent-wiki" / AGENT_INDEX_FILENAME
-            if link.is_symlink():
-                link.unlink()
-            if not link.exists():
-                rel = os.path.relpath(index_path, repo)
-                link.symlink_to(rel)
-                symlinks += 1
-                if not quiet:
-                    print(f"  [symlink]  {get_doc_filename()} -> {rel}")
-        elif link.is_symlink():
+        if link.is_symlink():
             pass
         elif link.exists():
             absorb_real_file(link, wiki_doc, quiet=quiet)
@@ -257,6 +248,8 @@ def _verify_symlinks(nodes: list, repo: Path):
             ensure_wiki_doc(rel_path)
             make_symlink(link, wiki_doc)
 
+    _scan_orphaned_managed_files(repo, nodes)
+
     if not broken and not untracked:
         print("  All symlinks OK.")
         clear_flag("docs_out_of_sync")
@@ -284,10 +277,60 @@ def _verify_symlinks(nodes: list, repo: Path):
         )
 
 
+def _scan_orphaned_managed_files(repo: Path, nodes: list):
+    """Find managed-banner files/symlinks not in schema and eject them."""
+    fn = get_doc_filename()
+    schema_links = {symlink_path(repo, rp) for rp, _ in nodes}
+
+    ejected = []
+    for candidate in repo.rglob(fn):
+        if ".git" in candidate.parts or ".agent-wiki" in candidate.parts:
+            continue
+
+        if candidate.is_symlink():
+            if candidate in schema_links:
+                continue
+            target = candidate.resolve()
+            if not target.exists():
+                continue
+            try:
+                content = target.read_text(errors="ignore")
+            except OSError:
+                continue
+            if "**WIKI MANAGED**" not in content:
+                continue
+            clean = _strip_wiki_metadata(content)
+            candidate.unlink()
+            candidate.write_text(clean)
+        else:
+            try:
+                content = candidate.read_text(errors="ignore")
+            except OSError:
+                continue
+            if "**WIKI MANAGED**" not in content:
+                continue
+            candidate.write_text(_strip_wiki_metadata(content))
+
+        ejected.append(candidate)
+        print(f"  [orphan-ejected] {candidate.relative_to(repo)}")
+
+    if ejected:
+        print(
+            f"\n  NOTE: {len(ejected)} orphaned managed file(s) were ejected "
+            f"(banner/footer stripped). Add to schema.yaml to re-manage.",
+            file=sys.stderr,
+        )
+
+
 def _strip_wiki_metadata(content: str) -> str:
     """Remove the wiki-managed banner and metadata footer from doc content."""
-    if content.startswith(_WIKI_BANNER):
-        content = content[len(_WIKI_BANNER):]
+    # Strip banner: any leading "> **WIKI MANAGED**" block up through the "---" separator
+    if content.lstrip().startswith("> **WIKI MANAGED**"):
+        sep = "---\n\n"
+        idx = content.find(sep)
+        if idx != -1:
+            content = content[idx + len(sep):]
+    # Strip metadata footer
     marker = "<!-- agent-wiki-meta"
     start = content.rfind(marker)
     if start != -1:
@@ -325,12 +368,12 @@ def _handle_untracked(schema: dict, repo: Path, quiet: bool = False):
                 print(f"  [untracked] removed mirror .agent-wiki/symlinks/{mirror.name}")
 
 
-def run_pull_docs(quiet: bool = False, strategy: str = "skip") -> tuple[int, list[str]]:
+def run_pull_docs(quiet: bool = False, strategy: str = "repo") -> tuple[int, list[str]]:
     """Scan the target repo for unmanaged doc files and absorb them into the wiki.
 
-    strategy: "skip" (default) — flag conflicts and leave both files untouched
-              "wiki"           — keep wiki version; replace repo file with symlink
-              "repo"           — overwrite wiki with repo version; replace repo file with symlink
+    strategy: "repo" (default) — repo wins; back up old wiki version to logs/local-edits/
+              "wiki"           — wiki wins; replace repo file with symlink, discard repo edit
+              "skip"           — flag conflicts and leave both files untouched
     """
     schema = load_schema()
     repo = get_repo_path()
@@ -356,18 +399,36 @@ def _detect_and_integrate(
     conflicts = 0
     absorbed_paths: list[str] = []
 
+    local_edits_dir = WIKI_ROOT / "logs" / "local-edits"
+
     for doc_file in sorted(repo.rglob(fn)):
-        if ".git" in doc_file.parts:
-            continue
-        if doc_file.is_symlink():
-            continue
-        rel_file = str(doc_file.relative_to(repo))
-        if rel_file in managed:
+        if ".git" in doc_file.parts or ".agent-wiki" in doc_file.parts:
             continue
 
+        rel_file = str(doc_file.relative_to(repo))
         rel_path = str(doc_file.parent.relative_to(repo))
         if rel_path == ".":
             rel_path = ""
+
+        # Eject orphan symlinks (managed banner, not in schema)
+        if doc_file.is_symlink():
+            if rel_file not in managed:
+                target = doc_file.resolve()
+                if target.exists():
+                    try:
+                        content = target.read_text(errors="ignore")
+                    except OSError:
+                        pass
+                    else:
+                        if "**WIKI MANAGED**" in content:
+                            doc_file.unlink()
+                            doc_file.write_text(_strip_wiki_metadata(content))
+                            if not quiet:
+                                print(f"  [orphan-ejected] {doc_file.relative_to(repo)}")
+            continue
+
+        if rel_file in managed:
+            continue
 
         if rel_path in skipped:
             continue
@@ -386,7 +447,7 @@ def _detect_and_integrate(
                     set_flag("multiple_versions")
                 if not quiet:
                     label = rel_path or "(root)"
-                    print(f"  [conflict] {label} — both wiki and repo versions exist; run `pull --strategy wiki` or `pull --strategy repo` to resolve")
+                    print(f"  [conflict] {label} — run `pull --strategy wiki` or `pull --strategy repo` to resolve")
                 conflicts += 1
                 continue
             elif strategy == "wiki":
@@ -401,11 +462,31 @@ def _detect_and_integrate(
                 absorbed_paths.append(rel_path or "(root)")
                 found += 1
                 continue
-            # strategy == "repo": fall through to absorb_real_file (overwrites wiki)
-            if rel_path in existing_conflicts:
-                clear_conflict_log_for([rel_path])
-                if not load_conflict_log():
-                    clear_flag("multiple_versions")
+            else:
+                # strategy == "repo" (default): backup wiki, repo wins
+                local_edits_dir.mkdir(parents=True, exist_ok=True)
+                backup_name = (rel_path.replace("/", "-") or "root") + ".md"
+                backup = local_edits_dir / backup_name
+                shutil.copy(wiki_doc, backup)
+                append_log(CONFLICT_LOG, {
+                    "ts": now_ts(),
+                    "rel_path": rel_path,
+                    "repo_file": str(doc_file),
+                    "wiki_doc": str(wiki_doc),
+                    "wiki_backup": str(backup),
+                    "resolution": "repo-wins",
+                })
+                set_flag("multiple_versions")
+                if rel_path in existing_conflicts:
+                    clear_conflict_log_for([rel_path])
+                if not quiet:
+                    print(f"  [repo-wins] {rel_path or '(root)'} — old wiki backed up to logs/local-edits/{backup_name}")
+
+        # Strip any wiki banner/footer before absorbing — handles copied docs
+        # where the Location field may reference a different path entirely.
+        raw = doc_file.read_text()
+        if "**WIKI MANAGED**" in raw:
+            doc_file.write_text(_strip_wiki_metadata(raw))
 
         absorb_real_file(doc_file, wiki_doc, quiet=quiet)
         write_metadata_footer(wiki_doc, rel_path, "agent-wiki pull",

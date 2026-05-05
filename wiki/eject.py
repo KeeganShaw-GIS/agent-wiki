@@ -12,8 +12,8 @@ import subprocess
 from pathlib import Path
 
 from .lib import (
-    DOCS_ROOT, WIKI_ROOT, doc_path, get_repo_path, load_schema, schema_paths,
-    strip_metadata_footer, strip_wiki_banner, symlink_path, walk_schema,
+    DOCS_ROOT, WIKI_ROOT, doc_path, get_doc_filename, get_repo_path, load_schema,
+    schema_paths, strip_metadata_footer, strip_wiki_banner, symlink_path, walk_schema,
 )
 
 
@@ -38,12 +38,12 @@ def run_eject(scope: str | None = None):
                 f"Managed paths: {', '.join(s_paths) or '(none)'}"
             )
 
+    fn = get_doc_filename()
+    symlinks_dir = repo / ".agent-wiki" / "symlinks"
     ejected = 0
     for rel_path, _ in nodes:
         link = symlink_path(repo, rel_path)
         wiki_doc = doc_path(rel_path)
-        from .lib import get_doc_filename
-        fn = get_doc_filename()
         display = f"docs/{rel_path}/{fn}" if rel_path else f"docs/{fn}"
 
         if not link.is_symlink():
@@ -58,6 +58,12 @@ def run_eject(scope: str | None = None):
         link.unlink()
         link.write_text(content)
         _no_skip_worktree(repo, str(link.relative_to(repo)))
+
+        # Remove the flat mirror symlink from .agent-wiki/symlinks/
+        flat = ("root" if not rel_path else rel_path.replace("/", "-")) + Path(fn).suffix
+        mirror = symlinks_dir / flat
+        if mirror.is_symlink():
+            mirror.unlink()
 
         print(f"  [ejected]  {link.relative_to(repo)}")
         ejected += 1

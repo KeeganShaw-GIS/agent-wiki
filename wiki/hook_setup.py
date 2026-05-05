@@ -94,11 +94,10 @@ def _setup_agent_wiki_dir(repo):
 
     # Symlinks to operational files in .agent-wiki/ root
     for src, name in [
-        (TEMPLATE_FILE,     "AGENT.template.md"),
-        (INSTRUCTIONS_FILE, "instructions.md"),
-        (DRIFT_LOG,         "drift.jsonl"),
-        (NEW_ENTRY_LOG,     "new-entry.jsonl"),
-        (CONFLICT_LOG,      "conflict.jsonl"),
+        (TEMPLATE_FILE, "AGENT.template.md"),
+        (DRIFT_LOG,     "drift.jsonl"),
+        (NEW_ENTRY_LOG, "new-entry.jsonl"),
+        (CONFLICT_LOG,  "conflict.jsonl"),
     ]:
         link = cw_dir / name
         if link.exists() or link.is_symlink():
