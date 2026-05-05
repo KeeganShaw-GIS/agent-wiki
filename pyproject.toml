@@ -13,9 +13,14 @@ agent-wiki = "wiki.cli:main"
 
 [project.optional-dependencies]
 build = ["pyinstaller"]
+dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
 include = ["wiki*"]
 
 [tool.setuptools.package-data]
 "wiki" = ["templates/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

@@ -195,11 +195,13 @@ def run_push_docs(detect_target_docs: bool = False, verify: bool = False, quiet:
                 link.symlink_to(rel)
                 symlinks += 1
                 if not quiet:
-                    print(f"  [symlink]  {fn} -> {rel}")
+                    print(f"  [symlink]  {get_doc_filename()} -> {rel}")
         elif link.is_symlink():
             pass
         elif link.exists():
             absorb_real_file(link, wiki_doc, quiet=quiet)
+            write_metadata_footer(wiki_doc, rel_path, "agent-wiki push",
+                                  source_commit=git_head_hash(repo))
             symlinks += 1
         else:
             make_symlink(link, wiki_doc, quiet=quiet)
@@ -376,6 +378,8 @@ def _detect_and_integrate(
                     clear_flag("multiple_versions")
 
         absorb_real_file(doc_file, wiki_doc, quiet=quiet)
+        write_metadata_footer(wiki_doc, rel_path, "agent-wiki pull",
+                              source_commit=git_head_hash(repo))
         add_to_schema(schema, rel_path)
         absorbed_paths.append(rel_path or "(root)")
         found += 1

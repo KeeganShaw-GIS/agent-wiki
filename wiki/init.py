@@ -59,6 +59,14 @@ def _ensure_instruction_file(path: Path, default: str, label: str):
         print(f"  [exists]   {label}  (skipped — already customized)")
 
 
+def _ensure_schema(_repo=None):
+    if not SCHEMA_FILE.exists():
+        save_schema({"root+": {}})
+        print("  [created]  schema.yaml")
+    else:
+        print("  [exists]   schema.yaml  (skipped)")
+
+
 def _prompt_doc_filename() -> str:
     print("\nWhich doc filename does your LLM agent use?")
     print("  1) CLAUDE.md  — Anthropic Claude Code")
@@ -112,6 +120,8 @@ def run_init(
     _ensure_instruction_file(WIKI_MERGE_FILE, _pkg("WIKI_MERGE.md"),
                              "templates/WIKI_MERGE.md")
     _ensure_schema(repo)
+
+    from .check_paths import ensure_root_banner, run_push_docs
 
     absorbed_count = 0
     absorbed_paths: list[str] = []
