@@ -269,8 +269,8 @@ def commit_is_ancestor(repo: Path, commit: str) -> bool:
 
 # ── Metadata footer ──────────────────────────────────────────────────────────
 
-_METADATA_MARKER = "<!-- agent-wiki-meta"
-_METADATA_END = "-->"
+_HEADER_MARKER = "<!-- agent-wiki"
+_HEADER_END = "-->"
 
 
 def get_wiki_commit_id() -> Optional[str]:
@@ -282,11 +282,9 @@ def get_wiki_commit_id() -> Optional[str]:
     return h if h else None
 
 
-_WIKI_BANNER_PREFIX = "> **WIKI MANAGED**"
-
-
 def strip_wiki_banner(content: str) -> str:
-    if not content.startswith(_WIKI_BANNER_PREFIX):
+    """Strip legacy > **WIKI MANAGED** banner (kept for migration compatibility)."""
+    if not content.lstrip().startswith("> **WIKI MANAGED**"):
         return content
     idx = content.find("---\n\n")
     if idx != -1:
@@ -295,29 +293,59 @@ def strip_wiki_banner(content: str) -> str:
 
 
 def strip_metadata_footer(content: str) -> str:
-    marker = "\n" + _METADATA_MARKER
-    idx = content.find(marker)
+    """Strip legacy <!-- agent-wiki-meta --> footer (kept for migration compatibility)."""
+    marker = "<!-- agent-wiki-meta"
+    idx = content.find("\n" + marker)
     if idx != -1:
         return content[:idx]
-    if content.startswith(_METADATA_MARKER):
-        end = content.find(_METADATA_END)
+    if content.startswith(marker):
+        end = content.find(_HEADER_END)
         if end != -1:
-            return content[end + len(_METADATA_END):].lstrip("\n")
+            return content[end + len(_HEADER_END):].lstrip("\n")
     return content
 
 
+def strip_wiki_header(content: str) -> str:
+    """Strip the unified <!-- agent-wiki ... --> header block."""
+    if _HEADER_MARKER not in content:
+        # Fall back to stripping legacy formats
+        content = strip_wiki_banner(content)
+        content = strip_metadata_footer(content)
+        return content
+    start = content.find(_HEADER_MARKER)
+    end = content.find(_HEADER_END, start)
+    if end == -1:
+        return content
+    stripped = content[end + len(_HEADER_END):].lstrip("\n")
+    return stripped
+
+
 def read_metadata_footer(doc: Path) -> dict:
-    """Return key→value pairs from the agent-wiki-meta footer, or {}."""
+    """Return key→value metadata from the agent-wiki header block (or legacy footer)."""
     if not doc.exists():
         return {}
     content = doc.read_text()
-    start = content.find(_METADATA_MARKER)
+    # New unified header
+    start = content.find(_HEADER_MARKER)
+    if start != -1:
+        end = content.find(_HEADER_END, start)
+        if end != -1:
+            block = content[start + len(_HEADER_MARKER):end]
+            result = {}
+            for line in block.strip().splitlines():
+                if ":" in line:
+                    k, _, v = line.partition(":")
+                    result[k.strip()] = v.strip()
+            return result
+    # Legacy footer fallback
+    legacy = "<!-- agent-wiki-meta"
+    start = content.find(legacy)
     if start == -1:
         return {}
-    end = content.find(_METADATA_END, start)
+    end = content.find(_HEADER_END, start)
     if end == -1:
         return {}
-    block = content[start + len(_METADATA_MARKER):end]
+    block = content[start + len(legacy):end]
     result = {}
     for line in block.strip().splitlines():
         if ":" in line:
@@ -334,12 +362,17 @@ def write_metadata_footer(doc: Path, rel_path: str, touched_by: str,
     if source_commit is None:
         existing = read_metadata_footer(doc)
         source_commit = existing.get("SourceCommitID")
-    content = strip_metadata_footer(content)
+    # Strip both new header and legacy formats
+    content = strip_wiki_header(content)
     fn = get_doc_filename()
     location = f"{rel_path}/{fn}" if rel_path else fn
     wiki_commit = get_wiki_commit_id()
     lines = [
-        _METADATA_MARKER,
+        _HEADER_MARKER,
+        "Check .agent-wiki/flags.json before starting doc work.",
+        "LLM Guide: .agent-wiki/agents/llm.md",
+        "Wiki Index: .agent-wiki/AGENT-INDEX.md",
+        "",
         f"Location: {location}",
         f"LastTouchedBy: {touched_by}",
         f"ChangeDate: {date.today().isoformat()}",
@@ -348,8 +381,8 @@ def write_metadata_footer(doc: Path, rel_path: str, touched_by: str,
         lines.append(f"WikiCommitID: {wiki_commit}")
     if source_commit:
         lines.append(f"SourceCommitID: {source_commit}")
-    lines.append(_METADATA_END)
-    doc.write_text(content.rstrip() + "\n\n" + "\n".join(lines) + "\n")
+    lines.append(_HEADER_END)
+    doc.write_text("\n".join(lines) + "\n\n" + content.lstrip("\n"))
 
 
 # ── Scope resolution ─────────────────────────────────────────────────────────

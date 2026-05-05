@@ -69,12 +69,21 @@ def read_log(wiki: Path, name: str) -> list:
 
 
 def read_footer(path: Path) -> dict:
-    """Parse the agent-wiki-meta footer from a doc file, returning key→value dict."""
+    """Parse the agent-wiki header block from a doc file, returning key→value dict.
+
+    Supports both the new unified <!-- agent-wiki ... --> header and the legacy
+    <!-- agent-wiki-meta ... --> footer.
+    """
     if not path.exists():
         return {}
     content = path.read_text()
-    marker = "<!-- agent-wiki-meta"
     end_marker = "-->"
+
+    # New unified header: <!-- agent-wiki ... -->
+    new_marker = "<!-- agent-wiki"
+    legacy_marker = "<!-- agent-wiki-meta"
+    marker = new_marker if new_marker in content else legacy_marker
+
     start = content.find(marker)
     if start == -1:
         return {}

@@ -12,8 +12,9 @@ import subprocess
 from pathlib import Path
 
 from .lib import (
-    DOCS_ROOT, WIKI_ROOT, doc_path, get_doc_filename, get_repo_path, load_schema,
-    schema_paths, strip_metadata_footer, strip_wiki_banner, symlink_path, walk_schema,
+    DOCS_ROOT, WIKI_ROOT, clear_conflict_log_for, clear_flag, doc_path,
+    get_doc_filename, get_repo_path, load_conflict_log, load_schema, schema_paths,
+    strip_wiki_header, symlink_path, walk_schema,
 )
 
 
@@ -40,7 +41,9 @@ def run_eject(scope: str | None = None):
 
     fn = get_doc_filename()
     symlinks_dir = repo / ".agent-wiki" / "symlinks"
-    ejected = 0
+    local_edits_dir = WIKI_ROOT / "logs" / "local-edits"
+    ejected_paths = []
+
     for rel_path, _ in nodes:
         link = symlink_path(repo, rel_path)
         wiki_doc = doc_path(rel_path)
@@ -54,7 +57,13 @@ def run_eject(scope: str | None = None):
             print(f"  [skip]     {display}  (wiki doc missing)")
             continue
 
-        content = strip_wiki_banner(strip_metadata_footer(wiki_doc.read_text()))
+        # Back up wiki doc before replacing with stripped version
+        if scope is not None:
+            local_edits_dir.mkdir(parents=True, exist_ok=True)
+            backup_name = (rel_path.replace("/", "-") or "root") + ".md"
+            shutil.copy(wiki_doc, local_edits_dir / backup_name)
+
+        content = strip_wiki_header(wiki_doc.read_text())
         link.unlink()
         link.write_text(content)
         _no_skip_worktree(repo, str(link.relative_to(repo)))
@@ -65,9 +74,16 @@ def run_eject(scope: str | None = None):
         if mirror.is_symlink():
             mirror.unlink()
 
+        ejected_paths.append(rel_path)
         print(f"  [ejected]  {link.relative_to(repo)}")
-        ejected += 1
 
+    # Always clear conflict log for all requested paths — eject resolves any conflict
+    all_requested = [rp for rp, _ in nodes]
+    clear_conflict_log_for(all_requested)
+    if not load_conflict_log():
+        clear_flag("multiple_versions")
+
+    ejected = len(ejected_paths)
     if ejected:
         print(f"\n{ejected} file(s) ejected. Wiki docs in docs/ are untouched.")
         print("To stop managing these paths, remove them from schema.yaml.")

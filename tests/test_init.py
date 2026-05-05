@@ -61,20 +61,20 @@ class TestInitBasic:
         assert root_doc.exists()
         instructions_content = (wiki_dir / "templates" / "instructions.md").read_text()
         root_content = root_doc.read_text()
-        # Banner must be present
-        assert "**WIKI MANAGED**" in root_content
+        # Header must be present
+        assert "<!-- agent-wiki" in root_content
         # instructions.md content must be the body
         assert instructions_content.strip() in root_content
 
     def test_root_doc_has_wiki_managed_banner(self, target_repo, wiki_dir):
-        """Root doc always has the WIKI MANAGED banner even on a fresh repo."""
+        """Root doc always has the agent-wiki header even on a fresh repo."""
         run_wiki(wiki_dir, [
             "init", "--repo-path", str(target_repo),
             "--doc-filename", "CLAUDE.md",
             "--no-hooks", "--no-detect-target-docs",
         ])
         root_doc = wiki_dir / "docs" / "CLAUDE.md"
-        assert "**WIKI MANAGED**" in root_doc.read_text()
+        assert "<!-- agent-wiki" in root_doc.read_text()
 
     def test_creates_root_doc(self, target_repo, wiki_dir):
         run_wiki(wiki_dir, [

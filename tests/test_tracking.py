@@ -67,23 +67,15 @@ class TestUntrackPath:
         assert real_file.exists()
         assert not real_file.is_symlink()
 
-    def test_untrack_strips_wiki_banner(self, wiki_setup):
-        """Untracked file must not contain the WIKI MANAGED banner."""
+    def test_untrack_strips_wiki_header(self, wiki_setup):
+        """Untracked file must not contain any agent-wiki header or legacy banner."""
         wiki, repo = wiki_setup
         write_schema(wiki, "root+:\n  src~:\n  frontend+:\n    components+:\n")
         run_wiki(wiki, ["push"])
 
         content = (repo / "src" / "CLAUDE.md").read_text()
+        assert "<!-- agent-wiki" not in content
         assert "WIKI MANAGED" not in content
-        assert "> **WIKI MANAGED**" not in content
-
-    def test_untrack_strips_metadata_footer(self, wiki_setup):
-        """Untracked file must not contain the agent-wiki-meta footer."""
-        wiki, repo = wiki_setup
-        write_schema(wiki, "root+:\n  src~:\n  frontend+:\n    components+:\n")
-        run_wiki(wiki, ["push"])
-
-        content = (repo / "src" / "CLAUDE.md").read_text()
         assert "agent-wiki-meta" not in content
 
     def test_untrack_removes_agent_wiki_mirror(self, wiki_setup):

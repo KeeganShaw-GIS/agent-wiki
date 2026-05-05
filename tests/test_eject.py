@@ -14,19 +14,36 @@ class TestEjectScoped:
         assert src_link.exists()
         assert not src_link.is_symlink()
 
-    def test_ejected_file_has_no_metadata_footer(self, wiki_setup):
+    def test_ejected_file_has_no_wiki_header(self, wiki_setup):
         wiki, repo = wiki_setup
         run_wiki(wiki, ["eject", "--scope", "src"])
 
         content = (repo / "src" / "CLAUDE.md").read_text()
-        assert "<!-- agent-wiki-meta" not in content
-
-    def test_ejected_file_has_no_wiki_banner(self, wiki_setup):
-        wiki, repo = wiki_setup
-        run_wiki(wiki, ["eject", "--scope", "src"])
-
-        content = (repo / "src" / "CLAUDE.md").read_text()
+        assert "<!-- agent-wiki" not in content
         assert "WIKI MANAGED" not in content
+
+    def test_eject_scope_backs_up_wiki_doc(self, wiki_setup):
+        """Scoped eject backs up the wiki doc to logs/local-edits/ before stripping."""
+        wiki, repo = wiki_setup
+        run_wiki(wiki, ["eject", "--scope", "src"])
+
+        backup = wiki / "logs" / "local-edits" / "src.md"
+        assert backup.exists()
+        assert "<!-- agent-wiki" in backup.read_text()
+
+    def test_eject_scope_clears_conflict_entry(self, wiki_setup):
+        """Ejecting a path clears its entry from the conflict log."""
+        wiki, repo = wiki_setup
+        # Manufacture a conflict log entry for src
+        (repo / "src" / "CLAUDE.md").unlink()
+        (repo / "src" / "CLAUDE.md").write_text("# Conflict\n")
+        run_wiki(wiki, ["pull", "--strategy", "skip"])
+        from utils import read_log
+        assert any(e["rel_path"] == "src" for e in read_log(wiki, "conflict.jsonl"))
+
+        run_wiki(wiki, ["eject", "--scope", "src"])
+
+        assert not any(e["rel_path"] == "src" for e in read_log(wiki, "conflict.jsonl"))
 
     def test_eject_scope_leaves_other_paths_intact(self, wiki_setup):
         wiki, repo = wiki_setup

@@ -48,62 +48,57 @@ class TestPullAbsorb:
         assert "api+" in (wiki / "schema.yaml").read_text()
 
     def test_pull_strips_stale_banner_from_copied_doc(self, wiki_setup):
-        """A real file with a WIKI MANAGED banner referencing a different path gets
-        the banner stripped and re-absorbed with a fresh footer for its actual path."""
+        """A real file with a wiki header referencing a different path gets
+        the header stripped and re-absorbed with a fresh header for its actual path."""
         wiki, repo = wiki_setup
 
-        # Simulate copy-paste: file at api/ has a banner claiming it lives at src/
+        # Simulate copy-paste: file at api/ has a header claiming it lives at src/
         (repo / "api").mkdir(exist_ok=True)
         (repo / "api" / "CLAUDE.md").write_text(
-            "> **WIKI MANAGED** — This file is a symlink; edits here edit the wiki directly.\n"
-            "> Check `.agent-wiki/flags.json` before any doc work.\n\n"
-            "---\n\n"
-            "# API\nPasted from src.\n"
-            "<!-- agent-wiki-meta\n"
+            "<!-- agent-wiki\n"
             "Location: src/CLAUDE.md\n"
-            "SourceCommitID: abc123\n"
-            "-->\n"
+            "LastTouchedBy: agent-wiki push\n"
+            "-->\n\n"
+            "# API\nPasted from src.\n"
         )
 
         run_wiki(wiki, ["pull"])
 
         wiki_doc = wiki / "docs" / "api" / "CLAUDE.md"
         content = wiki_doc.read_text()
-        # Banner stripped — Location from old doc not present in body
+        # Old Location stripped — not present in body
         assert "src/CLAUDE.md" not in content
         # Content preserved
         assert "Pasted from src" in content
-        # Fresh footer written for actual path
+        # Fresh header written for actual path
         from utils import read_footer
         footer = read_footer(wiki_doc)
         assert footer.get("Location", "").endswith("api/CLAUDE.md")
 
     def test_pull_strips_banner_even_when_location_matches(self, wiki_setup):
-        """Banner is always stripped on pull — even if Location is correct.
-        The wiki rewrites a fresh authoritative footer."""
+        """Header is always stripped on pull — even if Location is correct.
+        The wiki rewrites a fresh authoritative header."""
         wiki, repo = wiki_setup
         (repo / "src" / "CLAUDE.md").unlink()
         (repo / "src" / "CLAUDE.md").write_text(
-            "> **WIKI MANAGED** — This file is a symlink; edits here edit the wiki directly.\n\n"
-            "---\n\n"
+            "<!-- agent-wiki\nLocation: src/CLAUDE.md\nLastTouchedBy: agent-wiki push\n-->\n\n"
             "# Src content\n"
-            "<!-- agent-wiki-meta\nLocation: src/CLAUDE.md\n-->\n"
         )
 
         run_wiki(wiki, ["pull"])
 
         content = (wiki / "docs" / "src" / "CLAUDE.md").read_text()
         assert "# Src content" in content
-        # Only one banner block (the fresh one written by pull)
-        assert content.count("<!-- agent-wiki-meta") == 1
+        # Only one header block (the fresh one written by pull)
+        assert content.count("<!-- agent-wiki") == 1
 
     def test_no_unmanaged_docs_prints_nothing_found(self, wiki_setup):
         wiki, repo = wiki_setup
         result = run_wiki(wiki, ["pull"])
         assert "No unmanaged" in result.stdout
 
-    def test_root_doc_absorbed_gets_wiki_banner(self, wiki_setup):
-        """A root CLAUDE.md absorbed by pull gets the WIKI MANAGED banner."""
+    def test_root_doc_absorbed_gets_wiki_header(self, wiki_setup):
+        """A root CLAUDE.md absorbed by pull gets the agent-wiki header."""
         wiki, repo = wiki_setup
         # Remove the existing root symlink and place a real file
         (repo / "CLAUDE.md").unlink()
@@ -112,7 +107,7 @@ class TestPullAbsorb:
         run_wiki(wiki, ["pull", "--strategy", "repo"])
 
         content = (wiki / "docs" / "CLAUDE.md").read_text()
-        assert "WIKI MANAGED" in content
+        assert "<!-- agent-wiki" in content
 
 
 class TestPullConflicts:

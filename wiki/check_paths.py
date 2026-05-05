@@ -8,22 +8,12 @@ from pathlib import Path
 
 from .lib import (
     AGENT_INDEX_FILENAME, CONFLICT_LOG, DOCS_ROOT, INSTRUCTIONS_FILE,
-    NEW_ENTRY_LOG, TEMPLATE_FILE, WIKI_ROOT,
+    NEW_ENTRY_LOG, TEMPLATE_FILE, WIKI_ROOT, _HEADER_MARKER,
     add_to_schema, append_log, clear_conflict_log_for, clear_flag, doc_path,
     get_config_flag, get_doc_filename, get_repo_path, git_head_hash,
     load_conflict_log, load_schema, now_ts,
-    save_schema, schema_paths, set_flag, symlink_path, untracked_paths,
-    walk_schema, write_metadata_footer,
-)
-
-_WIKI_BANNER = (
-    "> **WIKI MANAGED** — This file is a symlink; edits here edit the wiki directly.\n"
-    "> Check `.agent-wiki/flags.json` before any doc work.\n"
-    "> Update guidance: `.agent-wiki/agents/WIKI_UPDATE.md` · "
-    "Conflict guidance: `.agent-wiki/agents/WIKI_MERGE.md` · "
-    "House rules: `.agent-wiki/instructions.md` · "
-    "Index: `.agent-wiki/AGENT-INDEX.md`\n\n"
-    "---\n\n"
+    save_schema, schema_paths, set_flag, strip_wiki_header, symlink_path,
+    untracked_paths, walk_schema, write_metadata_footer,
 )
 
 
@@ -33,11 +23,16 @@ def ensure_root_banner(quiet: bool = False):
     if not root_doc.exists():
         return
     content = root_doc.read_text()
-    if "**WIKI MANAGED**" in content:
+    if _HEADER_MARKER in content:
         return
-    root_doc.write_text(_WIKI_BANNER + content)
+    # Migrate legacy banner if present
+    from .lib import strip_wiki_banner, strip_metadata_footer
+    content = strip_metadata_footer(strip_wiki_banner(content))
+    repo = get_repo_path()
+    write_metadata_footer(root_doc, "", "agent-wiki push",
+                          source_commit=git_head_hash(repo))
     if not quiet:
-        print(f"  [create-banner]  docs/{fn}")
+        print(f"  [header]  docs/{fn}")
 
 
 def ensure_wiki_doc(rel_path: str, source: str = "manual", quiet: bool = False) -> Path:
@@ -53,7 +48,7 @@ def ensure_wiki_doc(rel_path: str, source: str = "manual", quiet: bool = False) 
             body = _pkg_files("wiki").joinpath("templates/AGENT.template.md").read_text(
                 encoding="utf-8"
             ).replace("{path}", rel_path or "root")
-        dp.write_text(_WIKI_BANNER + body)
+        dp.write_text(body)
         fn = get_doc_filename()
         display = f"docs/{rel_path}/{fn}" if rel_path else f"docs/{fn}"
         if not quiet:
@@ -277,6 +272,11 @@ def _verify_symlinks(nodes: list, repo: Path):
         )
 
 
+def _is_wiki_managed(content: str) -> bool:
+    """Return True if content carries a wiki-managed marker (new or legacy format)."""
+    return _HEADER_MARKER in content or "**WIKI MANAGED**" in content
+
+
 def _scan_orphaned_managed_files(repo: Path, nodes: list):
     """Find managed-banner files/symlinks not in schema and eject them."""
     fn = get_doc_filename()
@@ -297,9 +297,9 @@ def _scan_orphaned_managed_files(repo: Path, nodes: list):
                 content = target.read_text(errors="ignore")
             except OSError:
                 continue
-            if "**WIKI MANAGED**" not in content:
+            if not _is_wiki_managed(content):
                 continue
-            clean = _strip_wiki_metadata(content)
+            clean = strip_wiki_header(content)
             candidate.unlink()
             candidate.write_text(clean)
         else:
@@ -307,9 +307,9 @@ def _scan_orphaned_managed_files(repo: Path, nodes: list):
                 content = candidate.read_text(errors="ignore")
             except OSError:
                 continue
-            if "**WIKI MANAGED**" not in content:
+            if not _is_wiki_managed(content):
                 continue
-            candidate.write_text(_strip_wiki_metadata(content))
+            candidate.write_text(strip_wiki_header(content))
 
         ejected.append(candidate)
         print(f"  [orphan-ejected] {candidate.relative_to(repo)}")
@@ -323,21 +323,8 @@ def _scan_orphaned_managed_files(repo: Path, nodes: list):
 
 
 def _strip_wiki_metadata(content: str) -> str:
-    """Remove the wiki-managed banner and metadata footer from doc content."""
-    # Strip banner: any leading "> **WIKI MANAGED**" block up through the "---" separator
-    if content.lstrip().startswith("> **WIKI MANAGED**"):
-        sep = "---\n\n"
-        idx = content.find(sep)
-        if idx != -1:
-            content = content[idx + len(sep):]
-    # Strip metadata footer
-    marker = "<!-- agent-wiki-meta"
-    start = content.rfind(marker)
-    if start != -1:
-        end = content.find("-->", start)
-        if end != -1:
-            content = content[:start].rstrip() + "\n"
-    return content
+    """Remove any wiki header/banner/footer from doc content."""
+    return strip_wiki_header(content)
 
 
 def _handle_untracked(schema: dict, repo: Path, quiet: bool = False):
@@ -420,9 +407,9 @@ def _detect_and_integrate(
                     except OSError:
                         pass
                     else:
-                        if "**WIKI MANAGED**" in content:
+                        if _is_wiki_managed(content):
                             doc_file.unlink()
-                            doc_file.write_text(_strip_wiki_metadata(content))
+                            doc_file.write_text(strip_wiki_header(content))
                             if not quiet:
                                 print(f"  [orphan-ejected] {doc_file.relative_to(repo)}")
             continue
@@ -482,11 +469,11 @@ def _detect_and_integrate(
                 if not quiet:
                     print(f"  [repo-wins] {rel_path or '(root)'} — old wiki backed up to logs/local-edits/{backup_name}")
 
-        # Strip any wiki banner/footer before absorbing — handles copied docs
-        # where the Location field may reference a different path entirely.
+        # Strip any wiki header before absorbing — handles copied docs where the
+        # Location field may reference a different path entirely.
         raw = doc_file.read_text()
-        if "**WIKI MANAGED**" in raw:
-            doc_file.write_text(_strip_wiki_metadata(raw))
+        if _is_wiki_managed(raw):
+            doc_file.write_text(strip_wiki_header(raw))
 
         absorb_real_file(doc_file, wiki_doc, quiet=quiet)
         write_metadata_footer(wiki_doc, rel_path, "agent-wiki pull",
